@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Brand -->
+    <color name="brand">#4F46E5</color>
+    <color name="brand_dark">#818CF8</color>
+    <color name="ic_launcher_background">#4F46E5</color>
+
+    <!-- Eisenhower quadrants -->
+    <color name="q_do">#E5484D</color>
+    <color name="q_plan">#F5A524</color>
+    <color name="q_delegate">#3B82F6</color>
+    <color name="q_drop">#64748B</color>
+
+    <!-- Splash / window background behind the WebView -->
+    <color name="splash_bg">#F6F7FB</color>
+    <color name="splash_bg_night">#0E1014</color>
+</resources>

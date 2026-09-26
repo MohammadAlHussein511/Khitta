@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Adaptive-icon foreground: a 2x2 Eisenhower grid, priority implied by opacity,
+     with the top cell already checked off. Art stays inside the 66dp safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- top-left cell (full white) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M33,26h12a7,7 0 0,1 7,7v12a7,7 0 0,1 -7,7H33a7,7 0 0,1 -7,-7V33a7,7 0 0,1 7,-7z" />
+    <!-- top-right cell -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.78"
+        android:pathData="M63,26h12a7,7 0 0,1 7,7v12a7,7 0 0,1 -7,7H63a7,7 0 0,1 -7,-7V33a7,7 0 0,1 7,-7z" />
+    <!-- bottom-left cell -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.5"
+        android:pathData="M33,56h12a7,7 0 0,1 7,7v12a7,7 0 0,1 -7,7H33a7,7 0 0,1 -7,-7V63a7,7 0 0,1 7,-7z" />
+    <!-- bottom-right cell -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.32"
+        android:pathData="M63,56h12a7,7 0 0,1 7,7v12a7,7 0 0,1 -7,7H63a7,7 0 0,1 -7,-7V63a7,7 0 0,1 7,-7z" />
+
+    <!-- check mark carved into the top-left cell -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#4F46E5"
+        android:strokeWidth="3.4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M32.6,39.2 L37.2,43.8 L46.2,33.6" />
+</vector>

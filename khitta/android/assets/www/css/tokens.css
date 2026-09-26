@@ -1,0 +1,135 @@
+/* ==========================================================================
+   tokens.css — design tokens. The single source of visual truth.
+   Theming = swapping this table on [data-theme]; no component ever hardcodes
+   a colour. Direction is handled by CSS logical properties (base.css).
+   ========================================================================== */
+
+:root {
+  /* brand */
+  --brand: #4f46e5;
+  --brand-strong: #4338ca;
+  --brand-soft: #eef0ff;
+  --brand-ink: #ffffff;
+  --accent: #7c3aed;
+
+  /* eisenhower quadrants */
+  --q1: #e5484d;  --q1-soft: #fdeced;  --q1-ink: #a3222a;
+  --q2: #d97706;  --q2-soft: #fdf3e0;  --q2-ink: #92580a;
+  --q3: #2f6fdb;  --q3-soft: #e9f1fd;  --q3-ink: #1d4f9e;
+  --q4: #64748b;  --q4-soft: #eef1f5;  --q4-ink: #46536b;
+
+  /* semantic */
+  --ok: #16a34a;      --ok-soft: #e7f6ec;
+  --warn: #d97706;    --warn-soft: #fdf3e0;
+  --danger: #dc2626;  --danger-soft: #fdeaea;
+
+  /* surfaces */
+  --bg: #f5f6fa;
+  --bg-grad-a: #f7f8fc;
+  --bg-grad-b: #eef0f7;
+  --surface: #ffffff;
+  --surface-2: #f4f5f9;
+  --surface-3: #eceef5;
+  --surface-sunken: #f0f1f6;
+
+  /* text */
+  --text: #12141a;
+  --text-2: #565c6d;
+  --text-3: #8a90a2;
+  --text-inv: #ffffff;
+
+  /* lines */
+  --line: #e3e6ef;
+  --line-2: #d6dae6;
+  --line-strong: #c3c8d8;
+
+  /* elevation */
+  --sh-1: 0 1px 2px rgba(18, 20, 34, .05), 0 1px 1px rgba(18, 20, 34, .04);
+  --sh-2: 0 2px 6px rgba(18, 20, 34, .06), 0 8px 20px rgba(18, 20, 34, .06);
+  --sh-3: 0 8px 20px rgba(18, 20, 34, .10), 0 24px 48px rgba(18, 20, 34, .12);
+  --sh-drag: 0 12px 28px rgba(18, 20, 34, .18), 0 2px 6px rgba(18, 20, 34, .10);
+  --ring: 0 0 0 3px color-mix(in srgb, var(--brand) 26%, transparent);
+
+  /* geometry */
+  --r-xs: 8px;
+  --r-sm: 12px;
+  --r-md: 16px;
+  --r-lg: 22px;
+  --r-xl: 28px;
+  --r-pill: 999px;
+
+  /* spacing scale */
+  --s1: 4px;  --s2: 8px;  --s3: 12px; --s4: 16px;
+  --s5: 20px; --s6: 24px; --s7: 32px; --s8: 40px;
+
+  /* type */
+  --f-family: "Noto Sans Arabic", "Segoe UI", Roboto, "Helvetica Neue", system-ui, sans-serif;
+  --f-mono: ui-monospace, "SF Mono", "Roboto Mono", monospace;
+  --fs-11: 11px; --fs-12: 12px; --fs-13: 13px; --fs-14: 14px;
+  --fs-15: 15px; --fs-16: 16px; --fs-18: 18px; --fs-20: 20px;
+  --fs-24: 24px; --fs-30: 30px; --fs-38: 38px;
+  --lh-tight: 1.25; --lh: 1.5; --lh-loose: 1.7;
+
+  /* motion */
+  --ease: cubic-bezier(.2, .8, .2, 1);
+  --ease-out: cubic-bezier(0, 0, .2, 1);
+  --ease-spring: cubic-bezier(.34, 1.36, .44, 1);
+  --d-fast: .14s;
+  --d: .22s;
+  --d-slow: .34s;
+
+  /* layout, filled at runtime from the native window insets */
+  --sat: 0px; --sab: 0px; --sal: 0px; --sar: 0px;
+  --topbar-h: 58px;
+  --tabbar-h: 62px;
+  --tap: 46px;
+}
+
+/* ---------------------------------------------------------------- dark */
+[data-theme="dark"] {
+  --brand: #8b93ff;
+  --brand-strong: #a5abff;
+  --brand-soft: #1d2036;
+  --brand-ink: #0b0d14;
+  --accent: #b39bff;
+
+  --q1: #ff6b6f;  --q1-soft: #331c20;  --q1-ink: #ffb3b5;
+  --q2: #f5b544;  --q2-soft: #33280f;  --q2-ink: #ffd79a;
+  --q3: #6fa8ff;  --q3-soft: #14233c;  --q3-ink: #b3d1ff;
+  --q4: #94a3b8;  --q4-soft: #1e2430;  --q4-ink: #c3ccdb;
+
+  --ok: #4ade80;      --ok-soft: #12291a;
+  --warn: #fbbf24;    --warn-soft: #2b2310;
+  --danger: #f87171;  --danger-soft: #2f1618;
+
+  --bg: #0b0d12;
+  --bg-grad-a: #0e1118;
+  --bg-grad-b: #0a0c11;
+  --surface: #14171f;
+  --surface-2: #191d27;
+  --surface-3: #212634;
+  --surface-sunken: #10131a;
+
+  --text: #eef0f6;
+  --text-2: #a4abbd;
+  --text-3: #757d92;
+  --text-inv: #0b0d12;
+
+  --line: #232838;
+  --line-2: #2c3244;
+  --line-strong: #3a4258;
+
+  --sh-1: 0 1px 2px rgba(0, 0, 0, .4);
+  --sh-2: 0 2px 8px rgba(0, 0, 0, .45), 0 10px 24px rgba(0, 0, 0, .35);
+  --sh-3: 0 10px 24px rgba(0, 0, 0, .55), 0 28px 56px rgba(0, 0, 0, .45);
+  --sh-drag: 0 14px 30px rgba(0, 0, 0, .6), 0 2px 8px rgba(0, 0, 0, .5);
+  --ring: 0 0 0 3px color-mix(in srgb, var(--brand) 34%, transparent);
+}
+
+/* Larger phones / small tablets get a touch more air */
+@media (min-width: 480px) {
+  :root { --s7: 40px; --topbar-h: 64px; }
+}
+@media (min-width: 720px) {
+  :root { --tabbar-h: 66px; }
+}
