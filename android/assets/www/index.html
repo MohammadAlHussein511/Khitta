@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="ar" dir="rtl" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#f6f7fb">
+<meta name="color-scheme" content="light dark">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="description" content="خِطّة — منظّم مهام شخصي يعمل بلا إنترنت وفق مصفوفة آيزنهاور، مع أسبوع السبت→الجمعة وتذكيرات على مستوى النظام.">
+<title>خِطّة</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/components.css">
+</head>
+<body>
+
+<div class="app" id="app">
+
+  <header class="topbar" id="topbar">
+    <div class="topbar-row">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg class="ic ic-lg"><use href="#i-target"></use></svg>
+        </span>
+        <span class="brand-text">
+          <span class="brand-title" id="brandTitle">خِطّة</span>
+          <span class="brand-sub" id="brandSub"></span>
+        </span>
+      </div>
+      <div class="topbar-actions">
+        <button class="icon-btn" id="btnLang" type="button" aria-label="Language"></button>
+        <button class="icon-btn" id="btnTheme" type="button" aria-label="Theme"></button>
+      </div>
+    </div>
+    <div class="topbar-extra" id="topbarExtra"></div>
+  </header>
+
+  <main class="view" id="view">
+    <section class="screen" id="screen-matrix" data-screen="matrix" role="tabpanel"></section>
+    <section class="screen" id="screen-week" data-screen="week" role="tabpanel" hidden></section>
+    <section class="screen" id="screen-stats" data-screen="stats" role="tabpanel" hidden></section>
+    <section class="screen" id="screen-settings" data-screen="settings" role="tabpanel" hidden></section>
+  </main>
+
+  <button class="fab" id="fab" type="button" aria-label="Add task">
+    <svg class="ic ic-lg"><use href="#i-plus"></use></svg>
+  </button>
+
+  <nav class="tabbar" id="tabbar" role="tablist"></nav>
+</div>
+
+<div class="scrim" id="scrim" hidden></div>
+<div class="sheet-root" id="sheetRoot"></div>
+<div class="modal-root" id="modalRoot"></div>
+<div class="toast-root" id="toastRoot" role="status" aria-live="polite"></div>
+
+<!-- ───────────────────────────── icon sprite ───────────────────────────── -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <g id="ic-stroke" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></g>
+  </defs>
+
+  <symbol id="i-target" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="8.6"></circle><circle cx="12" cy="12" r="4.2"></circle><circle cx="12" cy="12" r="0.9" fill="currentColor" stroke="none"></circle>
+  </symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3.4" y="3.4" width="7.2" height="7.2" rx="2.2"></rect><rect x="13.4" y="3.4" width="7.2" height="7.2" rx="2.2"></rect>
+    <rect x="3.4" y="13.4" width="7.2" height="7.2" rx="2.2"></rect><rect x="13.4" y="13.4" width="7.2" height="7.2" rx="2.2"></rect>
+  </symbol>
+  <symbol id="i-calendar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3.4" y="5" width="17.2" height="15.6" rx="3"></rect><path d="M3.4 10h17.2M8.2 3.2v3.4M15.8 3.2v3.4"></path>
+  </symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3 20.4h18"></path><path d="M6.4 20v-5.6M11.6 20V6.2M16.8 20v-9"></path>
+  </symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3.4 6.6h8M17.4 6.6h3.2M3.4 12h3.2M12.6 12h8M3.4 17.4h8M17.4 17.4h3.2"></path>
+    <circle cx="14.4" cy="6.6" r="2.4"></circle><circle cx="9.6" cy="12" r="2.4"></circle><circle cx="14.4" cy="17.4" r="2.4"></circle>
+  </symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 5v14M5 12h14"></path>
+  </symbol>
+  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M5 12.6 9.9 17.5 19 6.8"></path>
+  </symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="8.6"></circle><path d="M12 7.2V12l3.2 2"></path>
+  </symbol>
+  <symbol id="i-repeat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4.2 9.4A5.4 5.4 0 0 1 9.6 4h8.2M19.8 14.6A5.4 5.4 0 0 1 14.4 20H6.2"></path>
+    <path d="M15.4 1.8 18.4 4l-3 2.2M8.6 22.2 5.6 20l3-2.2"></path>
+  </symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 6.8h16M9.4 6.8V4.6h5.2v2.2M6.4 6.8 7.5 20h9l1.1-13.2"></path>
+  </symbol>
+  <symbol id="i-pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 20h4.2L20 8.2 15.8 4 4 15.8V20z"></path><path d="M14 6l4 4"></path>
+  </symbol>
+  <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M6.2 6.2 17.8 17.8M17.8 6.2 6.2 17.8"></path>
+  </symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M6.2 9.6a5.8 5.8 0 1 1 11.6 0c0 3.9 1.5 5.4 1.5 5.4H4.7s1.5-1.5 1.5-5.4z"></path><path d="M10 18.4a2.1 2.1 0 0 0 4 0"></path>
+  </symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M20.2 14.6A8.6 8.6 0 0 1 9.4 3.8a8.6 8.6 0 1 0 10.8 10.8z"></path>
+  </symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="4"></circle><path d="M12 2.4v2.2M12 19.4v2.2M2.4 12h2.2M19.4 12h2.2M5.2 5.2l1.6 1.6M17.2 17.2l1.6 1.6M18.8 5.2l-1.6 1.6M6.8 17.2l-1.6 1.6"></path>
+  </symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="8.6"></circle><path d="M3.6 12h16.8"></path>
+    <path d="M12 3.4c2.4 2.6 3.6 5.6 3.6 8.6s-1.2 6-3.6 8.6c-2.4-2.6-3.6-5.6-3.6-8.6S9.6 6 12 3.4z"></path>
+  </symbol>
+  <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 3.6v11M7.8 10.6 12 14.8l4.2-4.2M4.4 19.4h15.2"></path>
+  </symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 20.4v-11M7.8 13.4 12 9.2l4.2 4.2M4.4 4.6h15.2"></path>
+  </symbol>
+  <symbol id="i-flame" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 3.2s5.2 4.4 5.2 9.2a5.2 5.2 0 0 1-10.4 0c0-1.9 1-3.4 1-3.4s.9 2.2 2 2.2c0-3.4 2.2-5.4 2.2-8z"></path>
+  </symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 3.8 2.8 20h18.4L12 3.8z"></path><path d="M12 10v4.2M12 17.2h.01"></path>
+  </symbol>
+  <symbol id="i-dots" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+    <circle cx="12" cy="5.2" r="1.7"></circle><circle cx="12" cy="12" r="1.7"></circle><circle cx="12" cy="18.8" r="1.7"></circle>
+  </symbol>
+  <symbol id="i-drag" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+    <circle cx="9" cy="6" r="1.5"></circle><circle cx="15" cy="6" r="1.5"></circle>
+    <circle cx="9" cy="12" r="1.5"></circle><circle cx="15" cy="12" r="1.5"></circle>
+    <circle cx="9" cy="18" r="1.5"></circle><circle cx="15" cy="18" r="1.5"></circle>
+  </symbol>
+  <symbol id="i-chevron-start" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M14.5 5.5 8 12l6.5 6.5"></path>
+  </symbol>
+  <symbol id="i-chevron-end" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M9.5 5.5 16 12l-6.5 6.5"></path>
+  </symbol>
+  <symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="8.6"></circle><path d="M12 11.2v5M12 7.9h.01"></path>
+  </symbol>
+  <symbol id="i-bolt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M13.4 2.8 5.6 13.8h4.6l-1.2 7.4 8.4-11.4h-4.8l.8-7z"></path>
+  </symbol>
+  <symbol id="i-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="9.4" cy="8" r="3.2"></circle><path d="M3.4 19.8c0-3.2 2.7-5 6-5s6 1.8 6 5"></path>
+    <path d="M16.2 5.4a3.2 3.2 0 0 1 0 5.6M17.6 15.2c2 .8 3.2 2.4 3.2 4.6"></path>
+  </symbol>
+  <symbol id="i-flag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M6 21V3.6M6 4.4h11.4l-2.2 4 2.2 4H6"></path>
+  </symbol>
+  <symbol id="i-list" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M8.4 6.4h12M8.4 12h12M8.4 17.6h12"></path>
+    <circle cx="4.4" cy="6.4" r="1.3" fill="currentColor" stroke="none"></circle>
+    <circle cx="4.4" cy="12" r="1.3" fill="currentColor" stroke="none"></circle>
+    <circle cx="4.4" cy="17.6" r="1.3" fill="currentColor" stroke="none"></circle>
+  </symbol>
+  <symbol id="i-table" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3.4" y="4.4" width="17.2" height="15.2" rx="2.6"></rect>
+    <path d="M3.4 9.6h17.2M3.4 14.6h17.2M9.6 9.6v10"></path>
+  </symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="5.4" y="10.4" width="13.2" height="9.6" rx="2.8"></rect>
+    <path d="M8.6 10.4V7.8a3.4 3.4 0 0 1 6.8 0v2.6"></path>
+  </symbol>
+  <symbol id="i-inbox" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3.6 13.6h4l1.4 2.6h6l1.4-2.6h4"></path><path d="M5.8 4.6h12.4l2.2 9v4a2 2 0 0 1-2 2H5.6a2 2 0 0 1-2-2v-4l2.2-9z"></path>
+  </symbol>
+</svg>
+
+<!-- core (no dependencies) -->
+<script src="js/core/util.js"></script>
+<script src="js/core/dom.js"></script>
+<!-- domain: pure, unit-tested, portable to Kotlin 1:1 -->
+<script src="js/domain/date.js"></script>
+<script src="js/domain/recurrence.js"></script>
+<script src="js/domain/model.js"></script>
+<script src="js/domain/matrix.js"></script>
+<script src="js/domain/week.js"></script>
+<script src="js/domain/stats.js"></script>
+<!-- i18n depends on the domain date maths -->
+<script src="js/core/i18n.js"></script>
+<!-- platform adapters -->
+<script src="js/platform/bridge.js"></script>
+<script src="js/platform/storage.js"></script>
+<script src="js/platform/notify.js"></script>
+<!-- state container -->
+<script src="js/core/store.js"></script>
+<script src="js/ui/dnd.js"></script>
+<script src="js/ui/widgets.js"></script>
+<script src="js/ui/editor.view.js"></script>
+<script src="js/ui/matrix.view.js"></script>
+<script src="js/ui/week.view.js"></script>
+<script src="js/ui/stats.view.js"></script>
+<script src="js/ui/settings.view.js"></script>
+<script src="js/ui/app.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

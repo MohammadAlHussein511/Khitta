@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Default locale = Arabic (the app ships Arabic-first) -->
+<resources>
+    <string name="app_name">خِطّة</string>
+    <string name="channel_reminders">التذكيرات</string>
+    <string name="channel_reminders_desc">تنبيهات المهام المجدولة، تصلك حتى لو كان التطبيق مغلقًا</string>
+    <string name="notif_action_open">فتح</string>
+    <string name="notif_action_done">تم الإنجاز</string>
+    <string name="notif_action_snooze">غفوة ١٠ د</string>
+    <string name="notif_default_title">تذكير بمهمة</string>
+    <string name="notif_missed">تذكير فاتك أثناء إيقاف الجهاز</string>
+</resources>

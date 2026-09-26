@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Khitta" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/splash_bg_night</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:colorAccent">@color/brand_dark</item>
+        <item name="android:colorPrimary">@color/brand_dark</item>
+        <item name="android:textColorPrimary">#ECEEF4</item>
+    </style>
+</resources>
