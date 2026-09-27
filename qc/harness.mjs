@@ -576,6 +576,42 @@ try {
   })()`);
   check('bottom bar highlights the swiped-to page instantly', barSync === 'week', barSync);
 
+  // touch+pointer streams of ONE gesture must commit exactly one page step
+  const double = await page.evaluate(`(function(){
+    K.app.go('matrix');
+    var v=document.getElementById('view');
+    var before=K.app.active;
+    function pev(t,x,y){ return new PointerEvent(t,{bubbles:true,cancelable:true,pointerId:5,pointerType:'touch',clientX:x,clientY:y,isPrimary:true,buttons:t==='pointerup'?0:1}); }
+    function tev(t,x,y){
+      var touch=new Touch({identifier:5, target:v, clientX:x, clientY:y});
+      return new TouchEvent(t,{bubbles:true,cancelable:true,touches:t==='touchend'?[]:[touch],targetTouches:t==='touchend'?[]:[touch],changedTouches:[touch]});
+    }
+    var x=200,y=300;
+    v.dispatchEvent(pev('pointerdown',x,y)); v.dispatchEvent(tev('touchstart',x,y));
+    for(var i=1;i<=6;i++){ x+=30; v.dispatchEvent(pev('pointermove',x,y)); v.dispatchEvent(tev('touchmove',x,y)); }
+    v.dispatchEvent(pev('pointerup',x,y)); v.dispatchEvent(tev('touchend',x,y));
+    var mid=K.app.active;
+    return {before:before, mid:mid};
+  })()`);
+  await page.waitForTimeout(400);
+  const doubleAfter = await page.evaluate('K.app.active');
+  check('a single gesture moves exactly one page (touch+pointer locked)',
+    double.before === 'matrix' && double.mid === 'week' && doubleAfter === 'week',
+    JSON.stringify({ before: double.before, after: doubleAfter }));
+  await page.evaluate(`K.app.go('matrix','prev')`);
+  await page.waitForTimeout(300);
+
+  // untimed tasks must never arm an alarm
+  const untAlarms = await page.evaluate(`(function(){
+    var D=K.date, now=Date.now();
+    var t=K.store.addTask({title:'هدف صامت', dueAt:D.addDays(D.startOfDay(now),1), untimed:true, remind:true});
+    var p=K.notify.buildEntries(K.store.get(), now);
+    var mine=p.entries.filter(function(e){return e.taskId===t.id;}).length;
+    K.store.deleteTask(t.id);
+    return mine;
+  })()`);
+  check('untimed goals schedule zero notifications', untAlarms === 0, untAlarms + ' entries');
+
   // ---- V2.2: stacked matrix, word integrity, swipes over content ----
   await page.evaluate('K.app.go("matrix")');
   await page.waitForTimeout(450);
@@ -683,16 +719,21 @@ try {
   const expectIns = ins.dpr === 3 ? (ins.sat === '100px' && ins.sab === '90px' && ins.ime === '400px') : true;
   check('insets converted from physical to CSS px', expectIns, JSON.stringify(ins));
 
-  // identity + palette + tag style
-  await page.evaluate('K.app.go("settings")');
-  await page.waitForTimeout(450);
-  await page.fill('.settings-screen input.input', 'صلواتي');
-  await page.waitForTimeout(350);
-  const brand = await page.evaluate(`(function(){return {t:document.getElementById('brandTitle').textContent, d:document.title, s:K.store.settings().brandName};})()`);
-  check('custom app name applies live', brand.t === 'صلواتي' && brand.d === 'صلواتي', JSON.stringify(brand));
-  await page.evaluate(`document.querySelectorAll('.settings-screen .swatch-row .swatch')[1].click()`);
-  await page.waitForTimeout(300);
-  check('launcher icon variant stored', await page.evaluate('K.store.settings().iconVariant') === 2);
+  // identity customisation must be gone (V2.4); palette & tag style remain
+  const ident = await page.evaluate(`(function(){
+    return {nameInput: !!document.querySelector('.settings-screen input.input[type="text"]:not(.num)'),
+            iconSwatches: document.querySelectorAll('.settings-screen > .scroller > .set-group .swatch-row:not(.swatch-line .swatch-row)').length,
+            brand: document.getElementById('brandTitle').textContent,
+            title: document.title,
+            def: K.i18n.t('app.name'),
+            settingsKeys: Object.keys(K.store.settings())};
+  })()`);
+  check('app-name / icon customisation removed from settings',
+    ident.nameInput === false && ident.brand === ident.def && ident.title === ident.def,
+    JSON.stringify({ brand: ident.brand, def: ident.def }));
+  check('identity preferences no longer stored',
+    ident.settingsKeys.indexOf('brandName') < 0 && ident.settingsKeys.indexOf('iconVariant') < 0,
+    ident.settingsKeys.join(','));
   await page.evaluate(`document.querySelectorAll('.swatch-line .swatch')[6].click()`);
   await page.waitForTimeout(350);
   const pal = await page.evaluate(`(function(){var p=K.store.settings().palette;return {p:!!p, q1:p?p.q1:null, css:getComputedStyle(document.documentElement).getPropertyValue('--q1').trim()};})()`);
@@ -742,6 +783,26 @@ try {
   check('quadrant label translated', /Do now|Schedule|Delegate|Eliminate/.test(en.quad), en.quad);
   check('week still starts on Saturday', /Sat/i.test(en.firstDow), en.firstDow);
   check('Western digits in dates', en.asciiDigits, en.rangeText);
+  const padEn = await page.evaluate(`getComputedStyle(document.getElementById('topbar')).paddingTop`);
+  await page.evaluate(`K.store.setSetting('lang','ar')`);
+  await page.waitForTimeout(800);
+  const padAr = await page.evaluate(`getComputedStyle(document.getElementById('topbar')).paddingTop`);
+  check('header safe-area padding is identical in RTL and LTR', padEn === padAr && parseFloat(padAr) >= 10, padAr + ' / ' + padEn);
+  const quoteAr = await page.evaluate(`(function(){
+    var txt=document.querySelector('.matrix-screen .quote-banner .qb-text').textContent;
+    var idx=K.store.settings().lastQuote;
+    return {txt:txt, expect:K.i18n.quotes()[idx], arabic:/[\\u0600-\\u06FF]/.test(txt)};
+  })()`);
+  check('quote re-localises when reverting to Arabic', quoteAr.txt === quoteAr.expect && quoteAr.arabic === true, quoteAr.txt.slice(0, 24));
+  await page.evaluate(`K.store.setSetting('lang','en')`);
+  await page.waitForTimeout(700);
+  const quoteEn = await page.evaluate(`(function(){
+    var txt=document.querySelector('.matrix-screen .quote-banner .qb-text').textContent;
+    return {arabic:/[\\u0600-\\u06FF]/.test(txt), len:txt.length};
+  })()`);
+  check('quote follows the locale both ways', quoteEn.arabic === false && quoteEn.len > 10, JSON.stringify(quoteEn));
+  await page.evaluate(`K.store.setSetting('lang','ar')`);
+  await page.waitForTimeout(700);
   await page.evaluate('K.app.go("matrix")');
   await page.waitForTimeout(500);
   await shot(page, '17-matrix-en-light.png');

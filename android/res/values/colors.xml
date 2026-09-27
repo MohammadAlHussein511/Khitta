@@ -14,10 +14,6 @@
     <!-- Splash / window background behind the WebView -->
     <color name="splash_bg">#F6F7FB</color>
     <color name="splash_bg_night">#0E1014</color>
-    <!-- launcher icon variant backgrounds (V2 identity picker) -->
-    <color name="ic_bg_v2">#059669</color>
-    <color name="ic_bg_v3">#f97316</color>
-    <color name="ic_bg_v4">#0b0d14</color>
 </resources>
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
@@ -35,8 +31,4 @@
     <!-- Splash / window background behind the WebView -->
     <color name="splash_bg">#F6F7FB</color>
     <color name="splash_bg_night">#0E1014</color>
-    <!-- launcher icon variant backgrounds (V2 identity picker) -->
-    <color name="ic_bg_v2">#059669</color>
-    <color name="ic_bg_v3">#f97316</color>
-    <color name="ic_bg_v4">#0b0d14</color>
 </resources>

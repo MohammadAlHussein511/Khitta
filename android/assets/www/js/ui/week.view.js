@@ -18,7 +18,7 @@
   var lastDragEnd = 0;
   var dragHintShown = false;
   var dndController = null;
-  var quote = null;
+  var quoteIndex = -1;
 
   var SORTS = ['manual', 'time', 'quadrant', 'created'];
 
@@ -69,7 +69,7 @@
     els.progress = el('div', { class: 'day-progress' }, [els.progressFill]);
 
     // motivational banner (one phrase per launch)
-    els.quoteText = el('p', { class: 'qb-text', text: '' });
+    els.quoteText = el('p', { class: 'qb-text', text: quoteText() });
     els.quote = el('div', { class: 'quote-banner', role: 'note' }, [
       el('span', { class: 'qb-mark', 'aria-hidden': 'true' }, '”'),
       els.quoteText
@@ -291,13 +291,17 @@
     host.appendChild(build());
     els.root.addEventListener('click', onClick);
     attachDnd();
-    if (quote) els.quoteText.textContent = quote.text;
+    if (els.quoteText) els.quoteText.textContent = quoteText();
   }
 
-  /** The app shell owns quote rotation (new phrase per launch and per re-entry). */
-  function setQuote(text) {
-    quote = { text: text };
-    if (els.quoteText) els.quoteText.textContent = text || '';
+  function quoteText() {
+    return quoteIndex >= 0 ? (I.quotes()[quoteIndex] || '') : '';
+  }
+
+  /** The app shell owns quote rotation; views only store the index and paint per locale. */
+  function setQuoteIndex(i) {
+    quoteIndex = i | 0;
+    if (els.quoteText) els.quoteText.textContent = quoteText();
   }
 
   function cardFor(e, now, done, readonly) {
@@ -458,7 +462,7 @@
     els.root = fresh;
     els.root.addEventListener('click', onClick);
     attachDnd();
-    if (quote) els.quoteText.textContent = quote.text;
+    if (els.quoteText) els.quoteText.textContent = quoteText();
     render(store.get(), Date.now());
   }
 
@@ -500,7 +504,7 @@
   return {
     id: 'week',
     mount: mount, render: render, relayout: relayout,
-    focusToday: focusToday, focusDay: focusDay, setQuote: setQuote,
+    focusToday: focusToday, focusDay: focusDay, setQuoteIndex: setQuoteIndex,
     onDateChanged: onDateChanged,
     addOnSelectedDay: addOnSelectedDay,
     isReadonlyNow: isReadonlyNow, showPastModal: showPastModal

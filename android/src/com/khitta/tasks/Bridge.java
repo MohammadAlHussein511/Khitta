@@ -150,34 +150,6 @@ public class Bridge {
         return Store.readText(Store.backupFile(activity));
     }
 
-    /**
-     * Swap the launcher icon by enabling one exported activity-alias and disabling the
-     * others (the classic, Play-safe icon-switching technique; no restart needed).
-     */
-    @JavascriptInterface
-    public boolean setIconVariant(final int variant) {
-        if (variant < 1 || variant > 4) return false;
-        activity.runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                android.content.pm.PackageManager pm = activity.getPackageManager();
-                for (int i = 1; i <= 4; i++) {
-                    android.content.ComponentName cn = new android.content.ComponentName(
-                            activity, activity.getPackageName() + ".LauncherV" + i);
-                    int state = (i == variant)
-                            ? android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED
-                            : android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED;
-                    try {
-                        pm.setComponentEnabledSetting(cn, state, android.content.pm.PackageManager.DONT_KILL_APP);
-                    } catch (Throwable ignored) {
-                        // OEM launchers occasionally reject alias flips; the in-app brand still applies
-                    }
-                }
-            }
-        });
-        return true;
-    }
-
     // ------------------------------------------------------------ alarms
 
     @JavascriptInterface

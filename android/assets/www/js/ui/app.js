@@ -35,11 +35,14 @@
    * keyboard height (the collapsed editor sheet). Divide by devicePixelRatio, then clamp
    * to sane bounds so a misreport can never wreck the layout again.
    */
+  var rawInsets = { t: 0, r: 0, b: 0, l: 0, ime: 0 };   // physical px, as Android reports them
+
   function setInsets(t, r, b, l, ime) {
+    rawInsets = { t: t | 0, r: r | 0, b: b | 0, l: l | 0, ime: ime | 0 };
     var dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
     if (!(dpr > 0)) dpr = 1;
-    var px = function (v, cap) { return U.clamp(Math.round((v | 0) / dpr), 0, cap); };
-    insets = { t: px(t, 120), r: px(r, 120), b: px(b, 120), l: px(l, 120), ime: px(ime, 1400) };
+    var px = function (v, cap) { return U.clamp(Math.round(v / dpr), 0, cap); };
+    insets = { t: px(rawInsets.t, 120), r: px(rawInsets.r, 120), b: px(rawInsets.b, 120), l: px(rawInsets.l, 120), ime: px(rawInsets.ime, 1400) };
     var rs = document.documentElement.style;
     var rtl = I.isRtl();
     rs.setProperty('--sat', insets.t + 'px');
@@ -76,8 +79,9 @@
     rs.setProperty('--tag-alpha', String(((st.tagAlpha == null ? 16 : st.tagAlpha) / 100)));
   }
 
+  /** V2.4: the app name is fixed to the localised product name (no user override). */
   function applyBrand() {
-    var name = String(store.settings().brandName || '').trim() || I.t('app.name');
+    var name = I.t('app.name');
     if (els.brandTitle) els.brandTitle.textContent = name;
     document.title = name;
   }
@@ -105,7 +109,9 @@
     document.documentElement.lang = lang;
     document.documentElement.dir = I.dir();
     document.title = I.t('app.name');
-    setInsets(insets.t, insets.r, insets.b, insets.l, insets.ime); // re-map logical safe areas
+    // re-map logical safe areas from the RAW values (re-dividing the converted ones
+    // would shrink the top padding and push the header under the status bar)
+    setInsets(rawInsets.t, rawInsets.r, rawInsets.b, rawInsets.l, rawInsets.ime);
 
     if (els.brandTitle) els.brandTitle.textContent = I.t('app.name');
     if (els.brandSub) els.brandSub.textContent = I.t('topbar.today', { date: I.fmtDate(Date.now()) });
@@ -121,6 +127,7 @@
     Object.keys(mountedViews).forEach(function (id) {
       if (mountedViews[id] && mountedViews[id].relayout) mountedViews[id].relayout();
     });
+    pushQuote();          // banner text is locale-derived: repaint after relayout
     applyTheme();
     applyBrand();
     render('lang');
@@ -153,7 +160,21 @@
 
   var TAB_ORDER = ['matrix', 'week', 'stats', 'settings'];
 
-  var lastQuoteText = '';
+  var lastQuoteIndex = -1;
+
+  /**
+   * One physical gesture produces BOTH touch and pointer event streams on Android; without a
+   * lock each stream committed its own page step (the reported "skips a page" behaviour).
+   * The first recogniser to commit wins; the other is ignored for 150 ms.
+   */
+  var navLockAt = 0;
+  function commitNav(fn) {
+    var now = Date.now();
+    if (now - navLockAt < 150) return false;
+    navLockAt = now;
+    fn();
+    return true;
+  }
 
   /**
    * The swipe container is indexed 1:1 by the bottom navigation bar:
@@ -204,11 +225,13 @@
       if (cancelled || !claimed) return;
       if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
       var i = TAB_ORDER.indexOf(active);
-      if (dx > 0) {
-        if (i < TAB_ORDER.length - 1) go(TAB_ORDER[i + 1], 'next');
-      } else if (i > 0) {
-        go(TAB_ORDER[i - 1], 'prev');
-      }
+      commitNav(function () {
+        if (dx > 0) {
+          if (i < TAB_ORDER.length - 1) go(TAB_ORDER[i + 1], 'next');
+        } else if (i > 0) {
+          go(TAB_ORDER[i - 1], 'prev');
+        }
+      });
     }
     viewEl.addEventListener('pointerup', function (e) { end(e, false); }, { passive: true });
     viewEl.addEventListener('pointercancel', function (e) { end(e, true); }, { passive: true });
@@ -257,11 +280,13 @@
       if (!claimed || Math.abs(dx) < 50) return;
       document.body.dataset.navswipe = String(Date.now());
       var i = TAB_ORDER.indexOf(active);
-      if (dx > 0) {
-        if (i < TAB_ORDER.length - 1) go(TAB_ORDER[i + 1], 'next');
-      } else if (i > 0) {
-        go(TAB_ORDER[i - 1], 'prev');
-      }
+      commitNav(function () {
+        if (dx > 0) {
+          if (i < TAB_ORDER.length - 1) go(TAB_ORDER[i + 1], 'next');
+        } else if (i > 0) {
+          go(TAB_ORDER[i - 1], 'prev');
+        }
+      });
     }, { passive: true });
   }
 
@@ -280,7 +305,7 @@
       if (!mountedViews[id] && host) {
         view.mount(host);
         mountedViews[id] = view;
-        if (view.setQuote && lastQuoteText) view.setQuote(lastQuoteText);
+        if (view.setQuoteIndex && lastQuoteIndex >= 0) view.setQuoteIndex(lastQuoteIndex);
       }
       view.render(store.get(), Date.now());
     }
@@ -331,13 +356,22 @@
     }, Math.max(1000, next - now + 500));
   }
 
-  /** A new motivational phrase per launch AND per re-entry, never repeating the last. */
+  /**
+   * A new motivational phrase per launch AND per re-entry, never repeating the last.
+   * Only the INDEX is stored; the text is always derived from the ACTIVE locale's array,
+   * so reverting the language re-renders the banner in the correct language.
+   */
   function refreshQuote() {
     var q = I.pickQuote(store.settings().lastQuote);
     store.setSetting('lastQuote', q.index);
-    lastQuoteText = q.text;
-    if (mountedViews.matrix && mountedViews.matrix.setQuote) mountedViews.matrix.setQuote(q.text);
-    if (mountedViews.week && mountedViews.week.setQuote) mountedViews.week.setQuote(q.text);
+    lastQuoteIndex = q.index;
+    pushQuote();
+  }
+
+  function pushQuote() {
+    if (lastQuoteIndex < 0) return;
+    if (mountedViews.matrix && mountedViews.matrix.setQuoteIndex) mountedViews.matrix.setQuoteIndex(lastQuoteIndex);
+    if (mountedViews.week && mountedViews.week.setQuoteIndex) mountedViews.week.setQuoteIndex(lastQuoteIndex);
   }
 
   function updateBackIntercept() {
@@ -597,8 +631,9 @@
     setInsets: setInsets, applyTheme: applyTheme, applyLang: applyLang,
     updateBackIntercept: updateBackIntercept,
     onLaunchPayload: onLaunchPayload, syncFromDisk: syncFromDisk, reloadFromDisk: reloadFromDisk,
-    flush: flush, onBack: onBack, refreshQuote: refreshQuote,
+    flush: flush, onBack: onBack, refreshQuote: refreshQuote, pushQuote: pushQuote,
     checkDateRollover: checkDateRollover, todayKey: function () { return dayKey; },
+    quoteIndex: function () { return lastQuoteIndex; },
     onPermissionResult: onPermissionResult, applyPalette: applyPalette, applyBrand: applyBrand,
     get active() { return active; },
     get insets() { return insets; }

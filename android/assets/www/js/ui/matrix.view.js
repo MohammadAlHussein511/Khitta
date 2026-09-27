@@ -19,7 +19,7 @@
   var mounted = false;
   var lastDragEnd = 0;
   var dndController = null;
-  var quoteText = '';
+  var quoteIndex = -1;   // text is always derived from the ACTIVE locale (V2.4 fix)
 
   function quadVars(q) {
     return {
@@ -52,7 +52,7 @@
     els.subs = {};
 
     // minimalist motivational banner at the very top of the home screen
-    els.quoteText = el('p', { class: 'qb-text', text: quoteText });
+    els.quoteText = el('p', { class: 'qb-text', text: quoteText() });
     els.quote = el('div', { class: 'quote-banner qb-home', role: 'note' }, [
       el('span', { class: 'qb-mark', 'aria-hidden': 'true' }, '”'),
       els.quoteText
@@ -192,10 +192,14 @@
     attachDnd();
   }
 
-  /** The app shell owns quote rotation (per launch and per re-entry). */
-  function setQuote(text) {
-    quoteText = text || '';
-    if (els.quoteText) els.quoteText.textContent = quoteText;
+  function quoteText() {
+    return quoteIndex >= 0 ? (I.quotes()[quoteIndex] || '') : '';
+  }
+
+  /** The app shell owns quote rotation; views only store the index and paint per locale. */
+  function setQuoteIndex(i) {
+    quoteIndex = i | 0;
+    if (els.quoteText) els.quoteText.textContent = quoteText();
   }
 
   // ------------------------------------------------------------------ render
@@ -260,7 +264,7 @@
 
   return {
     id: 'matrix',
-    setQuote: setQuote,
+    setQuoteIndex: setQuoteIndex,
     mount: mount,
     render: render,
     relayout: relayout,

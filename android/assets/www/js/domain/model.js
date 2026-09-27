@@ -20,9 +20,7 @@
       onboardingDone: false,
       alarmHorizonDays: 60,
       matrixHintSeen: 0,
-      // ---- V2 identity & presentation
-      brandName: '',                    // '' ⇒ use the localised default
-      iconVariant: 1,                   // 1..4 launcher icon
+      // ---- presentation
       palette: null,                    // null ⇒ built-in; else {q1:'#..',..}
       tagStyle: 'soft',                 // soft | vivid | outline
       tagAlpha: 16,                     // % opacity of the soft tag background
@@ -123,8 +121,6 @@
       onboardingDone: !!s.onboardingDone,
       alarmHorizonDays: typeof s.alarmHorizonDays === 'number' ? U.clamp(s.alarmHorizonDays, 7, 180) : d.alarmHorizonDays,
       matrixHintSeen: typeof s.matrixHintSeen === 'number' ? U.clamp(s.matrixHintSeen, 0, 99) : 0,
-      brandName: typeof s.brandName === 'string' ? s.brandName.slice(0, 40) : '',
-      iconVariant: [1, 2, 3, 4].indexOf(s.iconVariant) >= 0 ? s.iconVariant : 1,
       palette: normalizePalette(s.palette),
       tagStyle: ['soft', 'vivid', 'outline'].indexOf(s.tagStyle) >= 0 ? s.tagStyle : 'soft',
       tagAlpha: typeof s.tagAlpha === 'number' ? U.clamp(Math.round(s.tagAlpha), 4, 60) : 16,

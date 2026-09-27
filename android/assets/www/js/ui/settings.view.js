@@ -1,6 +1,8 @@
-/* ui/settings.view.js — identity (name + launcher icon), appearance (theme, language,
- * user palette, tag style/opacity), notification health, week start, data, about.
- * V2: file export/import were removed from the product entirely. */
+/* ui/settings.view.js — appearance (theme, language, user palette, tag style/opacity),
+ * notification health, week start, data, about.
+ * V2:   file export/import removed from the product entirely.
+ * V2.4: in-app app-name / launcher-icon customisation removed (name is the fixed
+ *       localised product name; the icon is the standard build-time asset). */
 (function (root, factory) {
   var K = root.K = root.K || {};
   K.views = K.views || {};
@@ -15,12 +17,6 @@
   var OFFSET_KEYS = { 0: 'offset.at', 5: 'offset.5', 10: 'offset.10', 30: 'offset.30', 60: 'offset.60', 1440: 'offset.1440' };
 
   var SWATCHES = ['#e5484d', '#f97316', '#d97706', '#16a34a', '#059669', '#2f6fdb', '#4f46e5', '#7c3aed', '#db2777', '#64748b'];
-  var ICON_VARIANTS = [
-    { v: 1, color: '#4f46e5' },
-    { v: 2, color: '#059669' },
-    { v: 3, color: '#f97316' },
-    { v: 4, color: '#1e293b' }
-  ];
 
   function row(cfg) {
     var value = cfg.value ? el('span', { class: 'set-value' }, cfg.value) : null;
@@ -54,43 +50,6 @@
 
   function build() {
     var s = store.settings();
-
-    // ---- identity -------------------------------------------------------
-    els.nameInput = el('input', {
-      class: 'input', type: 'text', maxlength: '40',
-      placeholder: I.t('settings.appNamePh'),
-      value: s.brandName || '', 'aria-label': I.t('settings.appName'), autocomplete: 'off'
-    });
-    els.nameInput.addEventListener('input', function () {
-      store.setSetting('brandName', els.nameInput.value.slice(0, 40));
-    });
-
-    els.iconChips = el('div', { class: 'swatch-row' });
-    els.iconNodes = {};
-    ICON_VARIANTS.forEach(function (iv) {
-      var b = el('button', {
-        class: 'swatch', type: 'button',
-        style: { background: 'linear-gradient(150deg,' + iv.color + ',' + U.mixHex(iv.color, '#000000', 0.72) + ')' },
-        'aria-pressed': String(s.iconVariant === iv.v),
-        'aria-label': I.t('settings.icon.v' + iv.v),
-        title: I.t('settings.icon.v' + iv.v)
-      });
-      b.addEventListener('click', function () {
-        store.setSetting('iconVariant', iv.v);
-        if (bridge.setIconVariant) bridge.setIconVariant(iv.v);
-        W.toast(I.t('settings.icon.v' + iv.v), { icon: 'check' });
-        paintIconChips();
-      });
-      els.iconNodes[iv.v] = b;
-      els.iconChips.appendChild(b);
-    });
-
-    els.identity = group(I.t('settings.identity'), [
-      row({ icon: 'pencil', title: I.t('settings.appName'), desc: I.t('settings.appNameDesc') }),
-      el('div', { style: { padding: '0 16px 12px', background: 'var(--surface)' } }, [els.nameInput]),
-      row({ icon: 'target', title: I.t('settings.icon'), desc: I.t('settings.iconDesc') }),
-      el('div', { style: { padding: '0 16px 14px', background: 'var(--surface)' } }, [els.iconChips])
-    ]);
 
     // ---- appearance -----------------------------------------------------
     els.themeSeg = W.segmented([
@@ -257,17 +216,10 @@
     ]);
 
     els.scroller = el('div', { class: 'scroller' }, [
-      els.identity, els.appearance, els.notifications, els.week, els.data, els.about
+      els.appearance, els.notifications, els.week, els.data, els.about
     ]);
     els.root = el('div', { class: 'settings-screen' }, [els.scroller]);
     return els.root;
-  }
-
-  function paintIconChips() {
-    var v = store.settings().iconVariant || 1;
-    ICON_VARIANTS.forEach(function (iv) {
-      els.iconNodes[iv.v].setAttribute('aria-pressed', String(iv.v === v));
-    });
   }
 
   function setStatusRow(node, title, desc, state, actionLabel, onAction) {
@@ -334,8 +286,6 @@
       clearDesc.textContent = I.t('settings.clearDone.desc', { n: n });
     }
 
-    paintIconChips();
-    if (document.activeElement !== els.nameInput) els.nameInput.value = s.brandName || '';
   }
 
   function relayout() {

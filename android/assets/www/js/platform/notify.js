@@ -36,6 +36,9 @@
       for (var i = 0; i < tasks.length; i++) {
         var t = tasks[i];
         if (!t || !t.dueAt || t.closedAt || t.remind === false) continue;
+        // V2.4: a goal without an explicit time has NO alarm — never schedule the
+        // implicit 00:00/default anchor (the reported midnight notification flood).
+        if (t.untimed) continue;
         var offsetMs = (t.remindOffset || 0) * 60000;
         var base = M.baseTime(t, s);                  // untimed goals happen at day-start hour
         if (base == null) continue;
@@ -115,7 +118,7 @@
       if (tasks[i].id !== taskId) continue;
       var t = tasks[i];
       var next = M.nextOpen(t, n);
-      if (next == null || t.remind === false) return null;
+      if (next == null || t.remind === false || t.untimed) return null;
       var shift = (M.baseTime(t, state.settings) || next) - t.dueAt;
       var trigger = next + shift - (t.remindOffset || 0) * 60000;
       return { occAt: next, at: trigger, past: trigger <= n };

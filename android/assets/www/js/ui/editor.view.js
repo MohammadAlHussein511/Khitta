@@ -142,6 +142,7 @@
       }
       if (bridge.vibrate) bridge.vibrate(8);
       paintWhen();
+      paintReminder();
     }, I.t('editor.untimed'));
     var untimedRow = el('div', { class: 'row-between', style: { gap: '10px' } }, [
       el('div', { class: 'set-text', style: { padding: '0' } }, [
@@ -171,6 +172,7 @@
       offsetWrap.hidden = !on;
       paintOccurrences();
     }, I.t('editor.reminder'));
+    var remindHint = el('div', { class: 'hint', text: I.t('editor.untimedNoRemind') });
     var offsetWrap = el('div', { class: 'col', style: { gap: '6px' } });
     var offsetChips = W.chips(OFFSETS.map(function (m) {
       return { value: m, label: I.t(OFFSET_KEYS[m] || 'offset.at') };
@@ -181,6 +183,13 @@
     offsetWrap.appendChild(el('div', { class: 'label', text: I.t('editor.remindBefore') }));
     offsetWrap.appendChild(offsetChips);
     offsetWrap.hidden = !draft.remind;
+
+    /** Untimed goals carry no alarm at all (V2.4): the reminder controls stand down. */
+    function paintReminder() {
+      remindSwitch.disabled = !!draft.untimed;
+      offsetWrap.hidden = !draft.remind || !!draft.untimed;
+      remindHint.hidden = !draft.untimed;
+    }
 
     // recurrence
     var rule = R.parse(draft.rec);
@@ -352,6 +361,7 @@
           ]),
           remindSwitch
         ]),
+        remindHint,
         offsetWrap
       ]),
       el('div', { class: 'field', style: { gap: '10px' } }, [
@@ -464,6 +474,7 @@
 
     paintWhen();
     paintRec();
+    paintReminder();
     setTimeout(function () {
       try { titleInput.focus(); } catch (e) { /* keyboard may be suppressed on first paint */ }
     }, 320);

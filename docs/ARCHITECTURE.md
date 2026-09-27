@@ -261,6 +261,27 @@ V2 also found, via the expanded unit suite: `fromParts()` treating calendar day 
 (breaking month-boundary week maths), the weekly end-count not being enforced in the
 occurrence walker, and `addTask` dropping the new `untimed` flag.
 
+### 10.6 V2.4 — five critical fixes
+
+1. **Swipe index skipping**: one physical gesture emits both touch and pointer streams on
+   Android; each stream committed its own page step (1→3, 4→2). A 150 ms `commitNav` lock makes
+   the first recogniser to commit the owner of the gesture. Mapping stays a strict pager over
+   `TAB_ORDER` (+1 right, −1 left) with the bottom bar's `aria-selected` updated per page.
+2. **RTL/LTR header overlap**: `applyLang()` re-invoked `setInsets()` with already-converted
+   values, dividing by `devicePixelRatio` a second time and collapsing the top safe-area.
+   Insets are now stored raw and converted exactly once; the top bar also carries a
+   `max(var(--sat), 10px)` floor so the header can never sit under the status bar.
+3. **Midnight alarm flood**: untimed goals are excluded from `notify.buildEntries()` and
+   `nextTriggerFor()` entirely — no implicit 00:00/default-hour alarm; the editor disables the
+   reminder controls for untimed tasks with an explanatory hint.
+4. **Quote locale reactivity**: views store only the quote *index*; the painted text is derived
+   from `I.quotes()` of the active locale at paint/relayout time, and `applyLang()` pushes the
+   index after relayout — reverting ar→en→ar re-localises the banner.
+5. **Cleanup**: in-app app-name and launcher-icon customisation fully removed (settings UI,
+   `brandName`/`iconVariant` settings + normalisation, `Bridge.setIconVariant`, manifest
+   activity-aliases and the variant icon resources). Name = localised product name; icon = the
+   standard adaptive asset.
+
 ### 10.5 V2.3 — midnight reactivity, completion choreography, pager/bar sync
 
 * **Date watchdog** (`app.checkDateRollover`): a self-re-arming timer fires ~0.5 s after local

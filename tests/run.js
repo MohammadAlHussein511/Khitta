@@ -821,20 +821,37 @@ test('palette validation accepts only a full 4-colour map', () => {
 
 test('V2 settings round-trip through the store', () => {
   mem.clear(); store.init();
-  store.setSetting('brandName', 'صلواتي');
   store.setSetting('tagStyle', 'vivid');
   store.setSetting('tagAlpha', 30);
   store.setSetting('weekView', 'grid');
   store.setSetting('weekSort', 'time');
-  store.setSetting('iconVariant', 3);
   store.setSetting('palette', { q1: '#111111', q2: '#222222', q3: '#333333', q4: '#444444' });
   store.flush(); store.init();
   const s = store.settings();
-  eq(s.brandName, 'صلواتي'); eq(s.tagStyle, 'vivid'); eq(s.tagAlpha, 30);
-  eq(s.weekView, 'grid'); eq(s.weekSort, 'time'); eq(s.iconVariant, 3);
+  eq(s.tagStyle, 'vivid'); eq(s.tagAlpha, 30);
+  eq(s.weekView, 'grid'); eq(s.weekSort, 'time');
   eq(s.palette.q4, '#444444');
+  eq('brandName' in s, false, 'app-name preference no longer exists');
+  eq('iconVariant' in s, false, 'icon-variant preference no longer exists');
   store.setSetting('tagStyle', 'nope');
   eq(store.settings().tagStyle, 'vivid', 'invalid values are ignored');
+});
+
+test('legacy identity preferences are stripped from old documents', () => {
+  const st = M.normalizeState({ settings: { brandName: 'قديم', iconVariant: 4 }, tasks: [] });
+  eq('brandName' in st.settings, false);
+  eq('iconVariant' in st.settings, false);
+});
+
+test('untimed tasks never reach the alarm schedule', () => {
+  freshStore();
+  const now = at(2026, 9, 10, 12);
+  store.addTask({ title: 'goal', dueAt: at(2026, 9, 11), untimed: true, remind: true });
+  store.addTask({ title: 'timed', dueAt: at(2026, 9, 11, 9), remind: true });
+  const p = N.buildEntries(store.get(), now);
+  eq(p.entries.length, 1, 'only the timed task is armed');
+  eq(p.entries[0].title, 'timed');
+  eq(N.nextTriggerFor(store.get(), store.get().tasks[0].id, now), null);
 });
 
 test('export/import are gone from the V2 codebase', () => {

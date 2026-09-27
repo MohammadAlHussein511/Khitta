@@ -6,7 +6,8 @@
 
 .topbar {
   flex: 0 0 auto;
-  padding-block-start: calc(var(--sat) + var(--s2));
+  /* SafeArea: never sit under the status bar, in RTL or LTR alike */
+  padding-block-start: calc(max(var(--sat), 10px) + var(--s2));
   padding-inline: var(--s4);
   padding-block-end: var(--s2);
   position: relative;
@@ -597,6 +598,7 @@
   transition: transform var(--d) var(--ease-spring);
 }
 .switch[aria-checked="true"] { background: var(--brand); border-color: var(--brand); }
+.switch[disabled] { opacity: .45; pointer-events: none; }
 [dir="rtl"] .switch[aria-checked="true"]::after { transform: translateX(-20px); }
 [dir="ltr"] .switch[aria-checked="true"]::after { transform: translateX(20px); }
 

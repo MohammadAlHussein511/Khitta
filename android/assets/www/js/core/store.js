@@ -285,8 +285,7 @@
     tagStyle: ['soft', 'vivid', 'outline'],
     weekView: ['list', 'grid'],
     weekSort: ['manual', 'time', 'quadrant', 'created'],
-    weekStart: [1, 6, 7],
-    iconVariant: [1, 2, 3, 4]
+    weekStart: [1, 6, 7]
   };
 
   /** Settings are validated at write time, so no view can persist a broken value. */
@@ -296,7 +295,6 @@
     if (key === 'alarmHorizonDays') value = U.clamp(Math.round(Number(value) || 60), 7, 180);
     if (key === 'defaultRemindOffset') value = U.clamp(Math.round(Number(value) || 0), 0, 10080);
     if (key === 'dayStartHour') value = U.clamp(Math.round(Number(value) || 9), 0, 23);
-    if (key === 'brandName') value = String(value == null ? '' : value).slice(0, 40);
     if (key === 'palette' && value != null && !M.normalizePalette(value)) return state.settings;
     state.settings[key] = value;
     if (key === 'lang') I.setLang(value);
