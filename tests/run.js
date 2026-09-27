@@ -577,6 +577,27 @@ test('reorder and moveToQuadrant go through the store', () => {
   eq(store.quadrantList('q3').length, 1);
 });
 
+test('syncOrderFromDom rewrites order_index + quadrant flags and persists', () => {
+  freshStore();
+  const due = at(2026, 9, 10, 9);
+  const a = store.addTask({ title: 'a', imp: true, urg: true, dueAt: due });
+  const b = store.addTask({ title: 'b', imp: true, urg: true, dueAt: due });
+  const c = store.addTask({ title: 'c', imp: true, urg: false, dueAt: due });
+  eq(store.quadrantList('q1').map(t => t.id), [a.id, b.id]);
+  // the arranged DOM says: q1 = [b]; q2 = [c, a]  (a dragged down into q2 under c)
+  const changed = store.syncOrderFromDom({ q1: [b.id], q2: [c.id, a.id], q3: [], q4: [] });
+  eq(changed, true);
+  eq(store.quadrantList('q1').map(t => t.id), [b.id]);
+  eq(store.quadrantList('q2').map(t => t.id), [c.id, a.id], 'model follows the arranged order');
+  eq(MX.keyOf(store.taskById(a.id)), 'q2', 'quadrant flags follow the snapshot');
+  eq(store.taskById(a.id).pos, 2 * MX.STEP, 'order_index rewritten positionally');
+  eq(store.taskById(b.id).pos, 1 * MX.STEP);
+  store.flush();
+  store.init();
+  eq(store.quadrantList('q2').map(t => t.id), [c.id, a.id], 'order survives a full restart');
+  eq(store.syncOrderFromDom({ q1: [b.id], q2: [c.id, a.id], q3: [], q4: [] }), false, 'idempotent');
+});
+
 test('reschedule shifts completion history with the task', () => {
   freshStore();
   const t = store.addTask({ title: 'r', dueAt: at(2026, 9, 1, 9), rec: 'DAILY:1' });

@@ -371,12 +371,14 @@
 .task-meta .m.is-today { color: var(--brand); font-weight: 700; }
 
 .task-grip {
-  width: 24px; flex: 0 0 auto; align-self: stretch;
+  width: 30px; flex: 0 0 auto; align-self: stretch;
   display: grid; place-items: center;
-  color: var(--text-3); opacity: .5;
-  cursor: grab; touch-action: none;
+  color: var(--text-3); opacity: .75;
+  cursor: grab; touch-action: none;          /* the compositor may never claim this gesture */
+  -webkit-touch-callout: none;
 }
-.task-grip .ic { width: 16px; height: 16px; }
+.task-grip .ic { width: 18px; height: 18px; }
+.task-grip:active { color: var(--brand); opacity: 1; }
 
 .task.is-dragging {
   box-shadow: var(--sh-drag);

@@ -257,6 +257,44 @@
     return t;
   }
 
+  /**
+   * DECISIVE drop persistence (V2.4.3): the DOM order the user physically arranged is the
+   * source of truth. We rewrite the positional field (`pos` = order_index) of every task in
+   * the snapshot, reclassify any task that landed in another quadrant, commit (which persists
+   * to storage), and only then does the view rebuild — so the dropped item locks in place.
+   *
+   * @param snap {q1:[ids], q2:[ids], q3:[ids], q4:[ids]} in visual order
+   */
+  function syncOrderFromDom(snap) {
+    var changed = false;
+    Object.keys(snap || {}).forEach(function (key) {
+      var q = MX.byKey(key);
+      var ids = snap[key] || [];
+      for (var i = 0; i < ids.length; i++) {
+        var t = taskById(ids[i]);
+        if (!t) continue;
+        var newPos = (i + 1) * MX.STEP;
+        if (t.imp !== q.imp || t.urg !== q.urg) { t.imp = q.imp; t.urg = q.urg; changed = true; }
+        if (t.pos !== newPos) { t.pos = newPos; changed = true; }
+      }
+    });
+    if (changed) commit('reorder', { source: 'dom' });
+    return changed;
+  }
+
+  /** Sequential order_index rewrite for a single flat list (week pending, manual sort). */
+  function applyIdsOrder(ids) {
+    var changed = false;
+    (ids || []).forEach(function (id, i) {
+      var t = taskById(id);
+      if (!t) return;
+      var newPos = (i + 1) * MX.STEP;
+      if (t.pos !== newPos) { t.pos = newPos; changed = true; }
+    });
+    if (changed) commit('reorder', { source: 'dom-list' });
+    return changed;
+  }
+
   /** Drag reordering inside one quadrant. Indices refer to the current sorted order. */
   function reorder(key, fromIndex, toIndex) {
     var list = quadrantList(key);
@@ -336,6 +374,7 @@
     armedCount: armedCount, quadrantList: quadrantList, rankForNew: rankForNew,
     addTask: addTask, updateTask: updateTask, deleteTask: deleteTask,
     restoreTask: restoreTask, reschedule: reschedule,
+    syncOrderFromDom: syncOrderFromDom, applyIdsOrder: applyIdsOrder,
     setOccurrenceDone: setOccurrenceDone, completeCurrent: completeCurrent, undoCurrent: undoCurrent,
     closeSeries: closeSeries, reopen: reopen,
     reorder: reorder, moveToQuadrant: moveToQuadrant,

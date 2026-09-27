@@ -1,15 +1,21 @@
-/* ui/dnd.js — pointer-driven drag & drop for vertical lists.
+/* ui/dnd.js — pointer-driven drag & drop for vertical lists, with a dedicated TOUCH path.
  *
- * Design notes
- *  • Works with touch and mouse through Pointer Events; a dedicated handle has
- *    `touch-action:none` so a drag never fights the scroller, and long-press anywhere on a
- *    card also starts a drag (once it starts, native touch scrolling is suppressed).
- *  • The real node is moved in the DOM during the gesture and a floating clone follows the
- *    finger. Because the node lives in the layout, the "make way" animation is free, and
- *    crossing from one list into another needs no special casing.
- *  • Siblings are animated with FLIP (measure → move → invert → play), so every shift is
- *    smooth even with variable card heights.
- *  • Autoscroll near the edges of the scrolling ancestor.
+ * Why two paths (V2.4.1 regression fix): on a real phone the page scroller is always
+ * scrollable, so the compositor claims a vertical finger movement and fires pointercancel
+ * before a pointer-event-only drag can own the gesture (mouse never cancels, which is why
+ * desktop tests passed while fingers failed). The touch path below drives the session from
+ * touchstart/touchmove/touchend and preventDefaults the scroll during the long-press window
+ * and for the whole drag, so a long-press always matures into a drag and never gets stolen.
+ *
+ * Gesture arbitration
+ *  • long-press (300 ms) on a card, or immediate drag from the grip  ⇒ reorder / reclassify
+ *  • quick horizontal movement before the long-press matures          ⇒ released to the
+ *    navigation swipe recogniser (we stop preventing and cancel the timer)
+ *  • vertical movement before the long-press matures                  ⇒ normal page scroll
+ *  • once a drag session is live, every touchmove is prevented: no scroll, no cancel
+ *
+ * The real node is moved in the DOM during the gesture (so "make way" is free) while a
+ * floating clone follows the finger; siblings animate with FLIP.
  */
 (function (root, factory) {
   var K = root.K = root.K || {};
@@ -18,17 +24,13 @@
   'use strict';
 
   var EDGE = 54;           // px from an edge where autoscroll kicks in
-  var LONG_PRESS = 300;    // ms
-  var SLOP_HANDLE = 6;     // px before a handle drag starts
-  var SLOP_BODY = 10;      // px of movement that cancels a pending long press
+  var LONG_PRESS = 260;    // ms — short enough to feel instant, long enough to beat a tap
+  var SLOP_HANDLE = 5;     // px before a handle drag starts
+  // Real fingers jitter while holding still; 18 px tolerates that without cancelling the
+  // long-press, yet is far below any deliberate scroll or swipe.
+  var SLOP_BODY = 18;
 
   var active = null;       // at most one session app-wide
-
-  function rectsOf(nodes) {
-    var out = [];
-    for (var i = 0; i < nodes.length; i++) out.push(nodes[i].getBoundingClientRect());
-    return out;
-  }
 
   function childrenOf(listEl, selector) {
     return Array.prototype.slice.call(listEl.querySelectorAll(':scope > ' + selector));
@@ -46,19 +48,21 @@
 
   /**
    * @param {Object} cfg
-   *   containerEl   element that receives pointerdown (usually the scrollable list)
+   *   containerEl   element that receives the gesture starters (usually the scrollable list)
    *   itemSelector  selector for draggable items
    *   handleSelector optional selector; dragging from it starts immediately
-   *   zones()       → [{id, listEl, itemSelector?, scrollEl?}] droppable lists (default: container)
+   *   canStart(node) optional veto (e.g. read-only days, non-manual sorting)
+   *   zones()       → [{id, listEl, highlightEl?, itemSelector?, scrollEl?}] droppable lists
    *   modelOf(node) → the model behind a node
-   *   onDrop(info)  → {node, model, fromZone, fromIndex, zone, index}
-   *   onDragStart/onDragMove/onDragEnd hooks
+   *   onDrop(info)  → {node, model, fromZone, fromIndex, zone, index, moved}
+   *   onDragStart / onDragMove / onDragEnd hooks
    */
   function attach(cfg) {
     var container = cfg.containerEl;
     var selector = cfg.itemSelector;
     var session = null;
-    var timers = {};
+    var press = null;          // pending long-press (touch path)
+    var pressTimer = null;
 
     function zones() {
       var z = cfg.zones ? cfg.zones() : null;
@@ -72,78 +76,28 @@
           highlightEl: x.highlightEl || listEl,
           itemSelector: x.itemSelector || selector,
           scrollEl: scroller,
+          pointZone: !!x.pointZone,      // drop-target-only zones never keep the dragged node
           rect: listEl.getBoundingClientRect(),
           scrollRect: scroller.getBoundingClientRect()
         };
       });
     }
 
-    function preventTouch(e) { if (active) e.preventDefault(); }
+    // keep any native scroll from racing a live session (belt & braces)
+    function preventTouchCapture(e) { if (active) e.preventDefault(); }
 
-    // -------------------------------------------------------------- gesture
+    // -------------------------------------------------------------- session core
 
-    function onDown(e) {
-      if (active) return;
-      if (e.pointerType === 'mouse' && e.button !== 0) return;
-      var interactive = e.target.closest('button, input, textarea, select, a, [data-nodrag]');
-      var onHandle = cfg.handleSelector ? !!e.target.closest(cfg.handleSelector) : false;
-      if (interactive && !onHandle) return;
-
-      var node = e.target.closest(selector);
-      if (!node || !container.contains(node)) return;
-      if (node.getAttribute && node.getAttribute('data-readonly')) return;
-      if (cfg.canStart && cfg.canStart(node) === false) return;
-
-      var start = { x: e.clientX, y: e.clientY, node: node, onHandle: onHandle, cancelled: false };
-
-      if (!onHandle) {
-        timers.lp = setTimeout(function () {
-          if (!start.cancelled) begin(start);
-        }, LONG_PRESS);
-      }
-
-      function move(ev) {
-        var dx = ev.clientX - start.x;
-        var dy = ev.clientY - start.y;
-        if (!session) {
-          if (onHandle && (Math.abs(dx) > SLOP_HANDLE || Math.abs(dy) > SLOP_HANDLE)) {
-            begin(start, ev.clientX, ev.clientY);
-          } else if (!onHandle && (Math.abs(dx) > SLOP_BODY || Math.abs(dy) > SLOP_BODY)) {
-            start.cancelled = true;
-            if (timers.lp) { clearTimeout(timers.lp); timers.lp = null; }
-          }
-        } else {
-          onMove(ev.clientX, ev.clientY, ev);
-        }
-      }
-      function up(ev) {
-        if (timers.lp) { clearTimeout(timers.lp); timers.lp = null; }
-        if (session) onUp();
-        window.removeEventListener('pointermove', move);
-        window.removeEventListener('pointerup', up);
-        window.removeEventListener('pointercancel', cancel);
-      }
-      function cancel() {
-        start.cancelled = true;
-        if (timers.lp) { clearTimeout(timers.lp); timers.lp = null; }
-        if (session) onUp(true);
-        window.removeEventListener('pointermove', move);
-        window.removeEventListener('pointerup', up);
-        window.removeEventListener('pointercancel', cancel);
-      }
-
-      window.addEventListener('pointermove', move, { passive: false });
-      window.addEventListener('pointerup', up);
-      window.addEventListener('pointercancel', cancel);
-    }
-
-    function begin(start, px, py) {
-      var node = start.node;
+    function begin(node, px, py) {
       var list = zones();
-      var hostZone = list.filter(function (z) { return z.listEl.contains(node); })[0] || list[0];
+      var hostZone = null;
+      for (var zi = 0; zi < list.length; zi++) {
+        if (list[zi].listEl.contains(node)) { hostZone = list[zi]; break; }
+      }
+      if (!hostZone) hostZone = list[0];
       var nodes = childrenOf(hostZone.listEl, hostZone.itemSelector);
       var index = nodes.indexOf(node);
-      if (index < 0) return;
+      if (index < 0) return false;
 
       var rect = node.getBoundingClientRect();
       var clone = node.cloneNode(true);
@@ -168,10 +122,9 @@
         zones: list, zone: hostZone, zoneId: hostZone.id,
         index: index, fromIndex: index, fromZone: hostZone.id,
         rect: rect,
-        px: px == null ? start.x : px,
-        py: py == null ? start.y : py,
-        offsetX: (px == null ? start.x : px) - rect.left,
-        offsetY: (py == null ? start.y : py) - rect.top,
+        px: px, py: py,
+        offsetX: px - rect.left,
+        offsetY: py - rect.top,
         model: cfg.modelOf ? cfg.modelOf(node) : null,
         raf: null
       };
@@ -183,16 +136,15 @@
       if (bridge && bridge.vibrate) bridge.vibrate(18);
       if (cfg.onDragStart) cfg.onDragStart(session);
       loop();
+      return true;
     }
 
-    // -------------------------------------------------------------- move
-
-    /**
-     * Which drop zone is under the pointer? Hit-test each zone's OWN card/chip rect —
-     * in the stacked matrix every section shares one page scroller, so the scroller's
-     * rect cannot tell them apart (V2.2 fix).
-     */
     function zoneAt(x, y) {
+      /**
+       * Which drop zone is under the pointer? Hit-test each zone's OWN card/chip rect —
+       * in the stacked matrix every section shares one page scroller, so the scroller's
+       * rect cannot tell them apart.
+       */
       for (var i = 0; i < session.zones.length; i++) {
         var r = session.zones[i].highlightEl.getBoundingClientRect();
         if (x >= r.left - 6 && x <= r.right + 6 && y >= r.top - 6 && y <= r.bottom + 6) {
@@ -226,7 +178,6 @@
         if (Math.abs(delta) < 1) continue;
         n.style.transition = 'none';
         n.style.transform = 'translateY(' + delta + 'px)';
-        /* eslint-disable no-loop-func */
         (function (el) {
           requestAnimationFrame(function () {
             el.style.transition = 'transform .2s cubic-bezier(.2,.8,.2,1)';
@@ -237,10 +188,9 @@
       }
     }
 
-    function onMove(x, y, ev) {
+    function onMove(x, y) {
       if (!session) return;
       session.px = x; session.py = y;
-      if (ev && ev.cancelable) ev.preventDefault();
 
       var clone = session.clone;
       clone.style.left = (x - session.offsetX) + 'px';
@@ -267,8 +217,6 @@
       if (cfg.onDragMove) cfg.onDragMove(session);
     }
 
-    // -------------------------------------------------------------- autoscroll
-
     function loop() {
       if (!session) return;
       // the page may auto-scroll under the finger: keep zone geometry fresh so
@@ -288,14 +236,11 @@
       }
       if (step) {
         el.scrollTop += step;
-        // keep the drop index in sync while the list scrolls under the finger
         var idx = indexAt(z, session.px, session.py);
-        if (idx !== session.index) onMove(session.px, session.py, null);
+        if (idx !== session.index) onMove(session.px, session.py);
       }
       session.raf = requestAnimationFrame(loop);
     }
-
-    // -------------------------------------------------------------- end
 
     function onUp(cancelled) {
       if (!session) return;
@@ -304,11 +249,17 @@
       active = null;
       if (s.raf) cancelAnimationFrame(s.raf);
 
-      // A cross-zone drag re-parents the live node into the hovered zone (a day chip,
-      // for instance). Put it back before the view re-renders, so no orphan node is
-      // left sitting inside a drop zone that the renderer never clears.
+      // If the node ended up inside a real drop LIST, keep it exactly where the user
+      // placed it — the drop callback snapshots the arranged DOM as the source of truth.
+      // Only non-list zones (e.g. a week day-chip) get their borrowed node returned,
+      // so no orphan is left inside a container the renderer never clears.
       if (s.node && s.originalParent && s.node.parentNode !== s.originalParent) {
-        s.originalParent.appendChild(s.node);
+        var inZoneList = false;
+        for (var zzi = 0; zzi < s.zones.length; zzi++) {
+          // point zones (e.g. week day-chips) only receive the node transiently
+          if (s.zones[zzi].listEl === s.node.parentNode && !s.zones[zzi].pointZone) { inZoneList = true; break; }
+        }
+        if (!inZoneList) s.originalParent.appendChild(s.node);
       }
 
       s.zones.forEach(function (z) {
@@ -319,24 +270,165 @@
       document.body.classList.remove('is-dragging-any');
       if (s.clone && s.clone.parentNode) s.clone.parentNode.removeChild(s.clone);
 
-      if (!cancelled && cfg.onDrop) {
+      if (cfg.onDrop) {
         cfg.onDrop({
           node: s.node, model: s.model,
           fromZone: s.fromZone, fromIndex: s.fromIndex,
           zone: s.zoneId, index: s.index,
-          moved: s.zoneId !== s.fromZone || s.index !== s.fromIndex
+          moved: s.zoneId !== s.fromZone || s.index !== s.fromIndex,
+          cancelled: !!cancelled
         });
       }
       if (cfg.onDragEnd) cfg.onDragEnd(s, !cancelled);
     }
 
-    container.addEventListener('pointerdown', onDown);
-    document.addEventListener('touchmove', preventTouch, { passive: false, capture: true });
+    function candidateFrom(target) {
+      var interactive = target.closest && target.closest('button, input, textarea, select, a, [data-nodrag]');
+      var onHandle = cfg.handleSelector ? !!target.closest(cfg.handleSelector) : false;
+      if (interactive && !onHandle) return null;
+      var node = target.closest ? target.closest(selector) : null;
+      if (!node || !container.contains(node)) return null;
+      if (node.getAttribute && node.getAttribute('data-readonly')) return null;
+      if (cfg.canStart && cfg.canStart(node) === false) return null;
+      return { node: node, onHandle: onHandle };
+    }
+
+    // -------------------------------------------------------------- mouse / pen path
+
+    function onPointerDown(e) {
+      if (active) return;
+      if (e.pointerType === 'touch') return;          // the touch path owns fingers
+      if (e.button !== 0) return;
+      var cand = candidateFrom(e.target);
+      if (!cand) return;
+
+      var start = { x: e.clientX, y: e.clientY, node: cand.node, onHandle: cand.onHandle, cancelled: false };
+      var timer = null;
+      if (!start.onHandle) {
+        timer = setTimeout(function () {
+          if (!start.cancelled) begin(start.node, start.x, start.y);
+        }, LONG_PRESS);
+      }
+
+      function move(ev) {
+        var dx = ev.clientX - start.x;
+        var dy = ev.clientY - start.y;
+        if (!session) {
+          if (start.onHandle && (Math.abs(dx) > SLOP_HANDLE || Math.abs(dy) > SLOP_HANDLE)) {
+            begin(start.node, ev.clientX, ev.clientY);
+            if (session) onMove(ev.clientX, ev.clientY);
+          } else if (!start.onHandle && (Math.abs(dx) > SLOP_BODY || Math.abs(dy) > SLOP_BODY)) {
+            start.cancelled = true;
+            if (timer) { clearTimeout(timer); timer = null; }
+          }
+        } else {
+          if (ev.cancelable) ev.preventDefault();
+          onMove(ev.clientX, ev.clientY);
+        }
+      }
+      function up() {
+        if (timer) { clearTimeout(timer); timer = null; }
+        if (session) onUp(false);
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', up);
+        window.removeEventListener('pointercancel', cancel);
+      }
+      function cancel() {
+        start.cancelled = true;
+        if (timer) { clearTimeout(timer); timer = null; }
+        if (session) onUp(true);
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', up);
+        window.removeEventListener('pointercancel', cancel);
+      }
+
+      window.addEventListener('pointermove', move, { passive: false });
+      window.addEventListener('pointerup', up);
+      window.addEventListener('pointercancel', cancel);
+    }
+
+    // -------------------------------------------------------------- touch path
+
+    function onTouchStart(e) {
+      if (active || e.touches.length !== 1) return;
+      var t = e.touches[0];
+      var cand = candidateFrom(e.target);
+      if (!cand) return;
+      if (cand.onHandle && e.cancelable) {
+        // The grip is the guaranteed drag path: blocking the gesture at touchstart means
+        // no scroll, no compositor takeover and no pointercancel can ever intercept it.
+        e.preventDefault();
+      }
+      press = { x: t.clientX, y: t.clientY, node: cand.node, onHandle: cand.onHandle, pending: true };
+      if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+      if (!cand.onHandle) {
+        pressTimer = setTimeout(function () {
+          pressTimer = null;
+          if (press && press.pending && !session) {
+            press.pending = false;
+            begin(press.node, press.x, press.y);
+          }
+        }, LONG_PRESS);
+      }
+    }
+
+    function onTouchMove(e) {
+      if (session) {
+        // the drag owns this gesture entirely: no scroll, no compositor takeover
+        if (e.cancelable) e.preventDefault();
+        var t0 = e.touches[0] || e.changedTouches[0];
+        if (t0) onMove(t0.clientX, t0.clientY);
+        return;
+      }
+      if (!press || !press.pending) return;
+      var t = e.touches[0];
+      if (!t) return;
+      var dx = t.clientX - press.x;
+      var dy = t.clientY - press.y;
+      var adx = Math.abs(dx), ady = Math.abs(dy);
+
+      if (press.onHandle) {
+        // the grip never scrolls: it becomes a drag as soon as it moves
+        if (e.cancelable) e.preventDefault();
+        if (adx > SLOP_HANDLE || ady > SLOP_HANDLE) {
+          press.pending = false;
+          if (begin(press.node, t.clientX, t.clientY)) onMove(t.clientX, t.clientY);
+        }
+        return;
+      }
+      if (adx > SLOP_BODY || ady > SLOP_BODY) {
+        // a real movement before the long-press matured: hand the gesture back
+        // (horizontal ⇒ navigation swipe, vertical ⇒ page scroll)
+        press.pending = false;
+        if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+        return;
+      }
+      // micro-jitter while pressing: hold the scroller so the long-press can mature
+      if (e.cancelable) e.preventDefault();
+    }
+
+    function onTouchEnd(e) {
+      if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+      press = null;
+      if (session) onUp(e.type === 'touchcancel');
+    }
+
+    container.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+    container.addEventListener('pointerdown', onPointerDown);
+    container.addEventListener('touchstart', onTouchStart, { passive: false });
+    container.addEventListener('touchmove', onTouchMove, { passive: false });
+    container.addEventListener('touchend', onTouchEnd);
+    container.addEventListener('touchcancel', onTouchEnd);
+    document.addEventListener('touchmove', preventTouchCapture, { passive: false, capture: true });
 
     return {
       destroy: function () {
-        container.removeEventListener('pointerdown', onDown);
-        document.removeEventListener('touchmove', preventTouch, { capture: true });
+        container.removeEventListener('pointerdown', onPointerDown);
+        container.removeEventListener('touchstart', onTouchStart);
+        container.removeEventListener('touchmove', onTouchMove);
+        container.removeEventListener('touchend', onTouchEnd);
+        container.removeEventListener('touchcancel', onTouchEnd);
+        document.removeEventListener('touchmove', preventTouchCapture, { capture: true });
         if (session) onUp(true);
       },
       isActive: function () { return !!session; }

@@ -261,6 +261,56 @@ V2 also found, via the expanded unit suite: `fromParts()` treating calendar day 
 (breaking month-boundary week maths), the weekly end-count not being enforced in the
 occurrence walker, and `addTask` dropping the new `untimed` flag.
 
+### 10.9 V2.4.3 — drop commits the arranged DOM order (snap-back eliminated)
+
+Symptom on device: the drag visual worked but the item snapped back on release — the drop
+callback's index arithmetic could disagree with the rendered arrangement on some WebViews.
+The drop path is now WYSIWYG and order-explicit:
+
+1. `dnd.onUp` leaves the dragged node exactly where the user placed it when that place is a
+   real drop list (point-zones such as week day-chips still return their borrowed node).
+2. `onDrop` snapshots the arranged `data-id` order of every quadrant list, then
+   `store.syncOrderFromDom()` rewrites the positional field (`pos = (i+1)·STEP`, the
+   order_index) on the live model objects, updates `imp/urg` for tasks that changed quadrant,
+   and `commit()`s — which emits and persists to `state.json`.
+3. Only then does the view rebuild, so the dropped item locks into its new permanent position;
+   a full app restart restores the same order (regression-checked in QC).
+4. Cancellation no longer discards the drop: `onDrop` always fires with a `cancelled` flag and
+   the matrix commits the visible arrangement regardless.
+   The week view persists manual order the same way (`store.applyIdsOrder`) and keeps the
+   drag-to-another-day reschedule behaviour.
+
+### 10.8 V2.4.2 — device-hardened drag (guaranteed grip path + jitter tolerance)
+
+Real WebViews can still lose best-effort long-press drags (hand jitter, OEM compositor
+behaviour). V2.4.2 adds a drag path that cannot be intercepted: the grip handle prevents the
+gesture at `touchstart` and carries `touch-action:none`, so no scroll takeover or
+`pointercancel` is possible and the drag begins with zero delay. The long-press path tolerates
+≤18 px of jitter during a 260 ms press window (micro-moves are prevented so the scroller
+cannot start), and `contextmenu`/touch-callout are suppressed inside drag containers.
+QC drives the real touch pipeline via CDP: long-press, grip, jittered long-press, vertical
+flick scroll, horizontal swipe navigation — 102/102 checks.
+
+### 10.7 V2.4.1 — touch drag & drop restored (regression)
+
+After the matrix became one scrollable stack, the compositor could claim any vertical finger
+movement (the page is always scrollable) and fire `pointercancel`, killing the pointer-event
+drag session on real devices while mouse-driven tests kept passing. `ui/dnd.js` was rebuilt
+with two input paths sharing one session core:
+
+* **touch path** — `touchstart/touchmove/touchend` on the container: micro-jitter during the
+  300 ms long-press window is `preventDefault`ed so the press matures; once the session is
+  live every touchmove is prevented (no scroll, no compositor takeover, no cancel); a movement
+  beyond slop *before* maturity hands the gesture back (horizontal ⇒ navigation swipe,
+  vertical ⇒ page scroll); the grip starts dragging immediately and never scrolls.
+* **pointer path** — unchanged semantics for mouse/pen; touch pointer events are ignored to
+  avoid double-driving a session.
+
+Drop commits through `cfg.onDrop` → `store.reorder` / `store.moveToQuadrant`, persisting
+monotonic fractional ranks. The QC suite now drives the real touch pipeline through CDP
+(`Input.dispatchTouchEvent`): long-press reorder, vertical flick scroll, horizontal swipe
+navigation — 100/100 checks.
+
 ### 10.6 V2.4 — five critical fixes
 
 1. **Swipe index skipping**: one physical gesture emits both touch and pointer streams on

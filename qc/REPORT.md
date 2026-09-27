@@ -1,8 +1,8 @@
 # QC report — Khitta (headless Chromium 8731)
 
-Run at 2026-09-27T08:45:56.923Z
+Run at 2026-09-27T15:20:43.535Z
 
-**96/96 checks passed**
+**104/104 checks passed**
 
 | Check | Result | Detail |
 |---|---|---|
@@ -30,7 +30,7 @@ Run at 2026-09-27T08:45:56.923Z
 | completion ring shows a percentage | ✅ | 25% |
 | ring dash offset animated | ✅ | 245.0 |
 | 7 activity bars | ✅ | 43px,35px,50px,50px,43px,50px,28px |
-| 4 stat tiles | ✅ | 3,4,20,9 |
+| 4 stat tiles | ✅ | 4,4,19,9 |
 | quadrant distribution populated | ✅ | 3,3,3,2 |
 | dark theme applied | ✅ | rgb(11, 13, 18) |
 | FAB opens the editor sheet | ✅ |  |
@@ -43,8 +43,16 @@ Run at 2026-09-27T08:45:56.923Z
 | calendar starts on Saturday | ✅ | سبت |
 | one day preselected | ✅ | 1 |
 | time picker renders hours + every minute | ✅ | 84 |
-| drag reorders tasks inside a quadrant | ✅ | t_cmg7cdvp2h → t_d5w3m24p2j → t_4y436pap2r  ⇒  t_d5w3m24p2j → t_cmg7cdvp2h → t_4y436pap2r |
-| ranks stay strictly increasing after reorder | ✅ | 2048,2560,3072 |
+| drag reorders tasks inside a quadrant | ✅ | t_2ww2w8e6ip → t_nucke9u6it → t_sjviqt36j0  ⇒  t_nucke9u6it → t_2ww2w8e6ip → t_sjviqt36j0 |
+| ranks stay strictly increasing after reorder | ✅ | 1024,2048,3072 |
+| reordered positions survive a full app restart | ✅ | t_nucke9u6it→t_2ww2w8e6ip  ⇒  t_nucke9u6it→t_2ww2w8e6ip |
+| TOUCH long-press drag reorders tasks | ✅ | t_nucke9u6it→t_2ww2w8e6ip  ⇒  t_2ww2w8e6ip→t_nucke9u6it |
+| touch reorder persists monotonic ranks | ✅ | 1024,2048,3072 |
+| TOUCH grip drag reorders without waiting for long-press | ✅ | t_2ww2w8e6ip→t_nucke9u6it  ⇒  t_nucke9u6it→t_2ww2w8e6ip |
+| TOUCH long-press survives hand jitter and reorders | ✅ | t_nucke9u6it→t_2ww2w8e6ip  ⇒  t_2ww2w8e6ip→t_nucke9u6it |
+| store order equals the arranged DOM after a touch drop | ✅ | {"dom":"t_2ww2w8e6ip,t_nucke9u6it,t_sjviqt36j0","st":"t_2ww2w8e6ip,t_nucke9u6it,t_sjviqt36j0"} |
+| vertical finger flick still scrolls (not stolen) | ✅ | {"top":379,"active":"matrix"} |
+| horizontal touch swipe still navigates | ✅ | matrix → week |
 | drop target highlights while crossing quadrants | ✅ | 1 |
 | dragging across quadrants reclassifies the task | ✅ | q4 |
 | dragging onto a day reschedules the task | ✅ | chip#2: Sun Sep 27 2026 → Mon Sep 28 2026 |
@@ -53,11 +61,11 @@ Run at 2026-09-27T08:45:56.923Z
 | weekly repeat shows a 7-day multi-select | ✅ | 7 |
 | saved rule keeps the picked weekdays | ✅ | {"kind":"weekly","days":3} |
 | motivational banner shows one of 20+ phrases | ✅ | 22 phrases in pool |
-| home screen carries the motivational banner | ✅ | 20 chars |
+| home screen carries the motivational banner | ✅ | 39 chars |
 | swipe right moves forward (Matrix → Week) | ✅ | week |
 | swipe left moves to the previous bar index (Week → Matrix) | ✅ | matrix |
 | swipe left follows the bottom-bar index after a tab jump | ✅ | stats |
-| re-entering the app rotates the phrase | ✅ | "وضّح أولوياتك قبل أن تزحم يو…" |
+| re-entering the app rotates the phrase | ✅ | "كل يوم صفحة؛ فاكتب فيها ما ي…" |
 | completed row celebrates briefly, then leaves the active view | ✅ | {"at120":true,"at1100":false} |
 | completed task stays in the database (filter, not delete) | ✅ | {"exists":true,"done":true} |
 | completed task remains reviewable in the week completed section | ✅ |  |
@@ -80,7 +88,7 @@ Run at 2026-09-27T08:45:56.923Z
 | app-name / icon customisation removed from settings | ✅ | {"brand":"خِطّة","def":"خِطّة"} |
 | identity preferences no longer stored | ✅ | lang,theme,weekStart,reminders,defaultRemindOffset,dayStartHour,onboardingDone,alarmHorizonDays,matrixHintSeen,palette,tagStyle,tagAlpha,weekView,weekSort,lastQuote |
 | palette choice drives the CSS variables | ✅ | {"p":true,"q1":"#4f46e5","css":"#4f46e5"} |
-| vivid tag skin uses the solid palette colour | ✅ | {"bg":"rgb(217, 119, 6)","mode":"vivid"} |
+| vivid tag skin uses the solid palette colour | ✅ | {"bg":"rgb(47, 111, 219)","mode":"vivid"} |
 | export/import removed from the codebase | ✅ | {"a":"undefined","b":"undefined","c":"undefined"} |
 | settings renders rows/controls | ✅ | {"rows":15,"switches":1,"segs":5,"fabHidden":true} |
 | FAB hidden on settings | ✅ |  |
@@ -90,8 +98,8 @@ Run at 2026-09-27T08:45:56.923Z
 | week still starts on Saturday | ✅ | Sat |
 | Western digits in dates | ✅ | Sep 26 – Oct 2, 2026 |
 | header safe-area padding is identical in RTL and LTR | ✅ | 18px / 18px |
-| quote re-localises when reverting to Arabic | ✅ | وضّح أولوياتك قبل أن تزح |
-| quote follows the locale both ways | ✅ | {"arabic":false,"len":45} |
+| quote re-localises when reverting to Arabic | ✅ | كل يوم صفحة؛ فاكتب فيها  |
+| quote follows the locale both ways | ✅ | {"arabic":false,"len":46} |
 | state survives a reload | ✅ | 16 → 16 |
 | primary controls meet the 36px minimum height | ✅ | min=58px  |
 | no console errors during the whole suite | ✅ |  |

@@ -169,7 +169,10 @@
           itemSelector: '.task'
         }];
         els.chips.forEach(function (chip, i) {
-          zones.push({ id: 'day:' + i, listEl: chip, highlightEl: chip, scrollEl: chip, itemSelector: '.task' });
+          zones.push({
+            id: 'day:' + i, listEl: chip, highlightEl: chip, scrollEl: chip,
+            itemSelector: '.task', pointZone: true      // drop target only, never a resting list
+          });
         });
         return zones;
       },
@@ -177,6 +180,12 @@
       onDrop: function (info) {
         lastDragEnd = Date.now();
         dragHintShown = true;
+        if (info.zone === 'pending' && sortMode() === 'manual' && !info.cancelled) {
+          var ids = Array.prototype.slice
+            .call(els.pendingList.querySelectorAll(':scope > .task'))
+            .map(function (n) { return n.getAttribute('data-id'); });
+          store.applyIdsOrder(ids);
+        }
         if (info.model && String(info.zone).indexOf('day:') === 0 && !isReadonlyNow(Date.now())) {
           var idx = Number(String(info.zone).slice(4));
           var bounds = WK.weekBounds(Date.now(), weekOffset, store.settings().weekStart);

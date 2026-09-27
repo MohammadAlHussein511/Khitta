@@ -122,15 +122,28 @@
       modelOf: function (node) { return store.taskById(node.getAttribute('data-id')); },
       onDrop: function (info) {
         lastDragEnd = Date.now();
-        if (!info.model) { render(store.get(), Date.now()); return; }
-        if (info.zone !== info.fromZone) {
-          store.moveToQuadrant(info.model.id, info.zone, info.index);
-          bridge.vibrate(14);
-          W.toast(I.t('task.moved', { quad: I.quadrantName(info.zone) }), { icon: 'grid' });
-        } else if (info.index !== info.fromIndex) {
-          store.reorder(info.fromZone, info.fromIndex, info.index);
+        // What the user sees is what gets stored: read the arranged DOM order of every
+        // quadrant, rewrite order_index (pos) + quadrant flags in the model, persist,
+        // then rebuild. No index arithmetic can disagree with the screen any more.
+        var snap = {};
+        var movedQuad = null;
+        MX.QUADRANTS.forEach(function (q) {
+          snap[q.key] = Array.prototype.slice
+            .call(els.lists[q.key].querySelectorAll(':scope > .task'))
+            .map(function (n) { return n.getAttribute('data-id'); });
+        });
+        if (info.model) {
+          var modelQuad = MX.keyOf(info.model);
+          if (info.zone !== info.fromZone && info.zone !== modelQuad) movedQuad = info.zone;
         }
-        render(store.get(), Date.now());
+        var changed = store.syncOrderFromDom(snap);
+        if (movedQuad) {
+          bridge.vibrate(14);
+          W.toast(I.t('task.moved', { quad: I.quadrantName(movedQuad) }), { icon: 'grid' });
+        } else if (changed) {
+          bridge.vibrate(8);
+        }
+        render(store.get(), Date.now());   // rebuild AFTER state + storage are updated
       },
       onDragEnd: function () {
         lastDragEnd = Date.now();

@@ -353,9 +353,118 @@ try {
     const ranks = await page.evaluate(`K.matrix.group(K.store.get().tasks).q2.map(t=>t.pos)`);
     check('ranks stay strictly increasing after reorder',
       ranks.every((v, i) => i === 0 || v > ranks[i - 1]), ranks.join(','));
+    const orderBeforeReload = await page.evaluate(`Array.from(document.querySelectorAll('.quad-list[data-list="q2"] .task')).map(c=>c.getAttribute('data-id'))`);
+    await page.reload({ waitUntil: 'load' });
+    await page.waitForTimeout(1000);
+    await page.evaluate('K.app.go("matrix")');
+    await page.waitForTimeout(450);
+    const orderAfterReload = await page.evaluate(`Array.from(document.querySelectorAll('.quad-list[data-list="q2"] .task')).map(c=>c.getAttribute('data-id'))`);
+    check('reordered positions survive a full app restart', orderAfterReload.join(',') === orderBeforeReload.join(','),
+      orderBeforeReload.slice(0, 2).join('→') + '  ⇒  ' + orderAfterReload.slice(0, 2).join('→'));
   } else {
     check('drag reorders tasks inside a quadrant', false, 'not enough cards in q1');
   }
+
+  // ---- REAL touch pipeline (CDP): fingers must be able to drag, scroll and swipe ----
+  const cdp = await ctx.newCDPSession(page);
+  const tTouch = (type, x, y) => cdp.send('Input.dispatchTouchEvent', {
+    type, touchPoints: type === 'touchEnd' ? [] : [{ x: Math.round(x), y: Math.round(y) }]
+  });
+  await page.evaluate('K.app.go("matrix")');
+  await page.waitForTimeout(400);
+  await page.evaluate("(function(){var s=document.querySelector('.matrix-stack');if(s)s.scrollTop=0;})()");
+  await page.waitForTimeout(200);
+  const tOrder = await page.evaluate(`Array.from(document.querySelectorAll('.quad-list[data-list="q2"] .task')).map(c=>c.getAttribute('data-id'))`);
+  if (tOrder.length >= 2) {
+    const r0 = await page.evaluate(`(function(){var r=document.querySelectorAll('.quad-list[data-list="q2"] .task')[0].getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,h:r.height};})()`);
+    const r1 = await page.evaluate(`(function(){var r=document.querySelectorAll('.quad-list[data-list="q2"] .task')[1].getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,h:r.height};})()`);
+    await tTouch('touchStart', r0.x, r0.y);
+    await page.waitForTimeout(430);                                  // long-press matures
+    await tTouch('touchMove', r0.x, r0.y + 6);
+    for (let i = 1; i <= 8; i++) {
+      await tTouch('touchMove', r0.x, r0.y + 6 + (r1.y + r1.h * 0.8 - r0.y - 6) * i / 8);
+      await page.waitForTimeout(28);
+    }
+    await tTouch('touchEnd');
+    await page.waitForTimeout(650);
+    const tAfter = await page.evaluate(`Array.from(document.querySelectorAll('.quad-list[data-list="q2"] .task')).map(c=>c.getAttribute('data-id'))`);
+    check('TOUCH long-press drag reorders tasks', tAfter.join(',') !== tOrder.join(','),
+      tOrder.slice(0, 2).join('→') + '  ⇒  ' + tAfter.slice(0, 2).join('→'));
+    const tRanks = await page.evaluate(`K.matrix.group(K.store.get().tasks).q2.map(t=>t.pos)`);
+    check('touch reorder persists monotonic ranks', tRanks.every((v, i) => i === 0 || v > tRanks[i - 1]), tRanks.join(','));
+  } else {
+    check('TOUCH long-press drag reorders tasks', false, 'not enough cards in q2');
+  }
+
+  // ---- grip drag over the touch pipeline: the uninterruptible path ----
+  await page.evaluate("(function(){var s=document.querySelector('.matrix-stack');if(s)s.scrollTop=0;})()");
+  await page.waitForTimeout(200);
+  const gOrder = await page.evaluate(`Array.from(document.querySelectorAll('.quad-list[data-list="q2"] .task')).map(c=>c.getAttribute('data-id'))`);
+  if (gOrder.length >= 2) {
+    const g0 = await page.evaluate(`(function(){var g=document.querySelectorAll('.quad-list[data-list="q2"] .task')[0].querySelector('.task-grip');var r=g.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()`);
+    const g1 = await page.evaluate(`(function(){var r=document.querySelectorAll('.quad-list[data-list="q2"] .task')[1].getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height*0.85};})()`);
+    await tTouch('touchStart', g0.x, g0.y);
+    await page.waitForTimeout(60);                       // grip needs NO long-press
+    for (let i = 1; i <= 6; i++) {
+      await tTouch('touchMove', g0.x, g0.y + (g1.y - g0.y) * i / 6);
+      await page.waitForTimeout(25);
+    }
+    await tTouch('touchEnd');
+    await page.waitForTimeout(600);
+    const gAfter = await page.evaluate(`Array.from(document.querySelectorAll('.quad-list[data-list="q2"] .task')).map(c=>c.getAttribute('data-id'))`);
+    check('TOUCH grip drag reorders without waiting for long-press', gAfter.join(',') !== gOrder.join(','),
+      gOrder.slice(0, 2).join('→') + '  ⇒  ' + gAfter.slice(0, 2).join('→'));
+  } else check('TOUCH grip drag reorders without waiting for long-press', false, 'not enough cards');
+
+  // ---- long-press drag WITH real-hand jitter (±6 px while holding) ----
+  await page.evaluate("(function(){var s=document.querySelector('.matrix-stack');if(s)s.scrollTop=0;})()");
+  await page.waitForTimeout(200);
+  const jOrder = await page.evaluate(`Array.from(document.querySelectorAll('.quad-list[data-list="q2"] .task')).map(c=>c.getAttribute('data-id'))`);
+  if (jOrder.length >= 2) {
+    const j0 = await page.evaluate(`(function(){var r=document.querySelectorAll('.quad-list[data-list="q2"] .task')[0].getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,h:r.height};})()`);
+    const j1 = await page.evaluate(`(function(){var r=document.querySelectorAll('.quad-list[data-list="q2"] .task')[1].getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height*0.85};})()`);
+    await tTouch('touchStart', j0.x, j0.y);
+    const jitter = [[4, -3], [-5, 4], [6, 2], [-4, -5], [3, 6]];
+    for (const [jx, jy] of jitter) { await tTouch('touchMove', j0.x + jx, j0.y + jy); await page.waitForTimeout(45); }
+    await page.waitForTimeout(120);                      // total hold > LONG_PRESS despite jitter
+    await tTouch('touchMove', j0.x, j0.y + 8);
+    for (let i = 1; i <= 6; i++) {
+      await tTouch('touchMove', j0.x, j0.y + 8 + (j1.y - j0.y) * i / 6);
+      await page.waitForTimeout(25);
+    }
+    await tTouch('touchEnd');
+    await page.waitForTimeout(600);
+    const jAfter = await page.evaluate(`Array.from(document.querySelectorAll('.quad-list[data-list="q2"] .task')).map(c=>c.getAttribute('data-id'))`);
+    check('TOUCH long-press survives hand jitter and reorders', jAfter.join(',') !== jOrder.join(','),
+      jOrder.slice(0, 2).join('→') + '  ⇒  ' + jAfter.slice(0, 2).join('→'));
+    const agree = await page.evaluate(`(function(){
+      var dom=Array.from(document.querySelectorAll('.quad-list[data-list="q2"] .task')).map(function(c){return c.getAttribute('data-id');});
+      var st=K.matrix.group(K.store.get().tasks).q2.map(function(t){return t.id;});
+      return {dom:dom.join(','), st:st.join(',')};
+    })()`);
+    check('store order equals the arranged DOM after a touch drop', agree.dom === agree.st && agree.dom.length > 0, JSON.stringify(agree));
+  } else check('TOUCH long-press survives hand jitter and reorders', false, 'not enough cards');
+
+  // a vertical finger flick must still scroll the page (gesture handed back pre-long-press)
+  await page.evaluate("(function(){var s=document.querySelector('.matrix-stack');if(s)s.scrollTop=0;})()");
+  await page.waitForTimeout(150);
+  await tTouch('touchStart', 200, 600);
+  for (let i = 1; i <= 6; i++) { await tTouch('touchMove', 200, 600 - i * 34); await page.waitForTimeout(16); }
+  await tTouch('touchEnd');
+  await page.waitForTimeout(500);
+  const flick = await page.evaluate(`(function(){var s=document.querySelector('.matrix-stack');return {top:Math.round(s.scrollTop), active:K.app.active};})()`);
+  check('vertical finger flick still scrolls (not stolen)', flick.top > 0 && flick.active === 'matrix', JSON.stringify(flick));
+
+  // a horizontal finger swipe must still navigate
+  const navBefore = await page.evaluate('K.app.active');
+  await tTouch('touchStart', 120, 320);
+  for (let i = 1; i <= 6; i++) { await tTouch('touchMove', 120 + i * 32, 320); await page.waitForTimeout(16); }
+  await tTouch('touchEnd');
+  await page.waitForTimeout(500);
+  check('horizontal touch swipe still navigates', await page.evaluate('K.app.active') !== navBefore,
+    navBefore + ' → ' + await page.evaluate('K.app.active'));
+  await page.evaluate(`K.app.go('matrix','prev')`);
+  await page.waitForTimeout(350);
 
   // ---- drag across quadrants (reclassify)
   await page.evaluate("(function(){var s=document.querySelector('.matrix-stack');if(s)s.scrollTop=0;var c=document.querySelector('.quad-list[data-list=\"q1\"] .task');if(c)c.scrollIntoView({block:'center'});})()");
