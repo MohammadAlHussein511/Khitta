@@ -270,13 +270,26 @@
     Object.keys(snap || {}).forEach(function (key) {
       var q = MX.byKey(key);
       var ids = snap[key] || [];
-      for (var i = 0; i < ids.length; i++) {
+      var i = 0;
+      for (; i < ids.length; i++) {
         var t = taskById(ids[i]);
         if (!t) continue;
         var newPos = (i + 1) * MX.STEP;
         if (t.imp !== q.imp || t.urg !== q.urg) { t.imp = q.imp; t.urg = q.urg; changed = true; }
         if (t.pos !== newPos) { t.pos = newPos; changed = true; }
       }
+      // V2.4.7: the matrix is a strict today-board, so a quadrant's DOM snapshot only
+      // contains the tasks with an occurrence today. Quadrant members that are hidden
+      // (their next occurrence lies on a later day) must not keep stale ranks that
+      // interleave with the committed arrangement — park them after it, preserving
+      // their relative order, so DOM ⇄ store agree and ranks stay strictly monotonic.
+      var seen = {};
+      ids.forEach(function (id) { seen[id] = 1; });
+      quadrantList(key).forEach(function (t) {
+        if (seen[t.id]) return;
+        var parkPos = (++i) * MX.STEP;
+        if (t.pos !== parkPos) { t.pos = parkPos; changed = true; }
+      });
     });
     if (changed) commit('reorder', { source: 'dom' });
     return changed;

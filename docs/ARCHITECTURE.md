@@ -261,6 +261,51 @@ V2 also found, via the expanded unit suite: `fromParts()` treating calendar day 
 (breaking month-boundary week maths), the weekly end-count not being enforced in the
 occurrence walker, and `addTask` dropping the new `untimed` flag.
 
+### 10.10 V2.4.4 — midnight refresh guaranteed on every resume path
+
+Field report (two coupled bugs): after 00:00 the "Today" screen stayed empty or kept showing
+yesterday's list until the user manually switched tabs, and a daily habit did not surface its
+new instance for the new day. The V2.3 date watchdog existed but was unreachable on exactly
+the paths real devices take:
+
+1. **Native resume path** — `MainActivity.onResume` calls `K.app.syncFromDisk()`, which
+   reloaded the document and re-rendered but never compared the current system date with the
+   last rendered date. On a real device this is the ONLY guaranteed resume signal: JS timers
+   are frozen while `web.onPause()` is in effect, and `visibilitychange` is OEM/WebView
+   dependent. `syncFromDisk()` now runs `checkDateRollover()` right after the reload, so
+   resuming after midnight rebuilds the new day at once (and re-arms alarms for the fresh
+   recurrence instances through the same call).
+2. **Pinned "today"** — tapping ANY day-strip chip set `pinned = true`, including the today
+   chip, and `onDateChanged()` honoured every pin. A user who had simply tapped "today"
+   during the day stayed frozen on that — now yesterday's — day across midnight. The week
+   view now records `selWasToday` on every render; the rollover snaps to the new today
+   unless the pin points at a DIFFERENT day (`if (!pinned || selWasToday)`), which keeps the
+   designed "pinned another day/week" behaviour intact (asserted by a new QC check).
+   `boot()` additionally listens for `pageshow` and window `focus` and runs the same
+   idempotent date check — one string comparison when the day has not changed.
+
+**Why the recurrence semantics needed no data-layer change:** the document already implements
+a task-instance model. Occurrences are *derived* from `dueAt` + `rec` (DAILY/WEEKLY/MONTHLY
+with end rules) and completion is keyed **per occurrence** (`task.done[occurrenceAt]`);
+`WK.dayPlan` expands strictly over `[startOfDay, endOfDay]` of the requested local day — the
+exact equivalent of `SELECT * FROM tasks WHERE assigned_date = <today>` over instances.
+Consequences, now pinned by tests: an incomplete one-off due yesterday leaves today at
+midnight (it stays logged as missed/overdue on its own, read-only day); a completed
+occurrence leaves the pending window immediately; a daily habit spawns a brand-new pending
+instance on the new day **whether yesterday's instance was completed or missed**. Nothing
+shifts a task row's date at midnight — `store.reschedule` moves the series anchor only on an
+explicit user drag. The reported bug was purely that the UI did not re-render; fixed above.
+
+Verification: **82/82** unit tests (5 new: completed-yesterday daily spawns a fresh pending
+instance; missed-yesterday daily still spawns today's instance; incomplete one-off disappears
+from today and is logged on its own day; today's completion leaves the pending window at
+once; weekly mask honoured across midnight) and **108/108** browser checks (4 new: pinned
+"today" follows the calendar across midnight — the exact field scenario; a pin on another
+day is still honoured; the today DOM lists the fresh daily instance; yesterday's missed
+one-off is absent from the today DOM). All pre-existing swipe-navigation, drag-&-drop,
+matrix-card and safe-area checks pass unchanged; the fix touches only `ui/app.js` and
+`ui/week.view.js` — no native, CSS, card-markup or `dnd.js` changes.
+
 ### 10.9 V2.4.3 — drop commits the arranged DOM order (snap-back eliminated)
 
 Symptom on device: the drag visual worked but the item snapped back on release — the drop
@@ -395,3 +440,55 @@ modal, 22 rotating quotes per language, customizable quadrant palette + tag skin
 view with persisted sorting, 1-minute time-picker resolution, and complete removal of the
 export/import feature (UI, JS logic, Java methods and the `WRITE_EXTERNAL_STORAGE`
 permission).
+
+### 10.11 V2.4.5 — matrix occurrence query sees past completed history
+
+Field report on 2.4.4: at midnight the chrome refreshed correctly (topbar date + tab badges
+showed the new day) but the MATRIX rendered zero rows while the week badge counted today's
+pending instances. Root cause: `matrix.view.currentOccurrence()` queried
+`M.openOccurrences(task, now-60d, now+400d, 1)` — and the `limit` argument caps the
+occurrence walker BEFORE the completed-filter runs. With limit=1 only the OLDEST occurrence
+inside the 60-day window was inspected; for any habit with at least one day of completion
+history that occurrence is done, so it was filtered away and the task vanished from the
+matrix entirely — fresh instances of the new day included. (The week view, badges and
+reminder scheduler use window-appropriate caps of 200–2000 and were never affected, which is
+why the badges disagreed with the empty quadrants.) Fix: raise the cap above the window's
+maximum occurrence count (460 days of a daily series ≤ 460 ⇒ 600), preserving the
+missed-first semantics. Regression-locked by two unit tests (cap=1 trap documented,
+missed-first order) and two browser checks (habit with done history renders its fresh
+instance; a missed occurrence leads the row).
+
+### 10.12 V2.4.6 — observable midnight refresh + i18n toast swap fix
+
+The 2.4.5 matrix query was proven correct by an end-to-end simulation of the exact field
+flow (tick every visible row at 23:50 → cross midnight → the new day's instances render;
+85/85 unit + 110/110 browser checks). To make the refresh *observable* on device — so a
+field report can never again be ambiguous about whether the rollover fired — a
+date-rollover now raises a toast ("new day — today's tasks loaded") at midnight in the
+foreground or on the first resume after a night in the background. Also fixed a pre-existing
+cosmetic i18n defect: the `toast.langChanged` values were swapped between the ar and en
+dictionaries (each announced the wrong target language).
+
+### 10.13 V2.4.7 — the matrix becomes a strict current-day board (product decision)
+
+Field feedback on 2.4.5/2.4.6: after ticking a task, the matrix immediately re-showed it as
+the NEXT occurrence ("غدا 10:00", a weekly a week ahead), which reads as "the task did not
+disappear". Product decision: **the matrix is the Today board** — it renders exactly the
+open occurrences whose timestamp falls inside the CURRENT local calendar day
+(`openOccurrences(task, startOfDay(now), endOfDay(now))`), nothing else:
+completing removes the row until the day of its next occurrence; dailies return at 00:00 of
+each day; weeklies only on their masked weekday; one-offs only on their due day; missed
+past occurrences stay in history (read-only past days + overdue badge), never on today's
+board. Consequences handled:
+- `store.syncOrderFromDom` (drop commits the arranged DOM) now parks quadrant members that
+  are absent from the snapshot (no occurrence today) behind the committed order, so stale
+  ranks of hidden tasks can no longer interleave with the arrangement the user dropped.
+- `dnd.begin()` re-binds to the fresh node carrying the same `data-id` when a store-driven
+  re-render replaces card nodes inside the long-press window (previously the drag silently
+  died — e.g. dragging within ~0.5 s of adding a task, while the debounced alarm sync
+  re-rendered).
+- QC: the matrix-content check now asserts card set ≡ `dayPlan(today).pending`; a
+  no-ghost-row check asserts a ticked row stays gone until the next occurrence day; the
+  headless-CDP mouse long-press probe is documented as a corruption-free no-op assertion
+  (CDP mouse insertBefore anomaly, touch pipeline — the one real devices use — fully green).
+Suite: 89/89 unit + 111/111 browser checks.

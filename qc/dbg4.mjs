@@ -1,0 +1,36 @@
+import { chromium } from 'playwright-core';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const WWW = path.resolve(HERE, '../android/assets/www');
+const EXEC = '/tmp/.cache/ms-playwright/chromium-1148/chrome-linux/chrome';
+const browser = await chromium.launch({ executablePath: EXEC, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
+const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+page.on('pageerror', e => console.log('[pageerror]', String(e).slice(0,300)));
+await page.goto('file://' + WWW + '/index.html');
+await page.waitForTimeout(1200);
+await page.evaluate(`(function(){var b=document.querySelector('.sheet .btn-primary'); if(b) b.click();})()`);
+await page.waitForTimeout(300);
+await page.evaluate(`(function(){
+  var D=K.date, S=K.store, now=Date.now(), p=D.parts(now);
+  ['أ','ب','ج'].forEach(function(t,i){ S.addTask({title:'سحب '+t, imp:true, urg:false, remind:false,
+    dueAt:D.fromParts({y:p.y,m:p.m,d:p.d,H:Math.min(23,p.H+1+i),M:5})}); });
+  K.app.go('matrix'); K.app.render('x');
+})()`);
+await page.waitForTimeout(700);   // let the debounced alarm-sync render land BEFORE pressing
+await page.evaluate(`(function(){var s=document.querySelector('.matrix-stack');if(s)s.scrollTop=0;})()`);
+await page.waitForTimeout(200);
+const geo = await page.evaluate(`(function(){var c=document.querySelectorAll('.quad-list[data-list="q2"] .task');var r0=c[0].getBoundingClientRect(),r1=c[1].getBoundingClientRect();return {x0:r0.x+r0.width/2,y0:r0.y+r0.height/2,x1:r1.x+r1.width/2,y1:r1.y+r1.height*0.9};})()`);
+await page.mouse.move(geo.x0, geo.y0);
+await page.mouse.down();
+await page.waitForTimeout(420);
+console.log('active after press (no pending render):', await page.evaluate('K.dnd.active'));
+await page.mouse.move(geo.x0, geo.y0 + 8, { steps: 4 });
+await page.waitForTimeout(80);
+await page.mouse.move(geo.x1, geo.y1, { steps: 12 });
+await page.waitForTimeout(200);
+console.log('active mid-drag:', await page.evaluate('K.dnd.active'));
+await page.mouse.up();
+await page.waitForTimeout(600);
+console.log('order:', await page.evaluate(`Array.from(document.querySelectorAll('.quad-list[data-list="q2"] .task')).map(c=>c.getAttribute('data-id')).join(',')`));
+await browser.close();

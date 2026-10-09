@@ -97,6 +97,22 @@
       if (!hostZone) hostZone = list[0];
       var nodes = childrenOf(hostZone.listEl, hostZone.itemSelector);
       var index = nodes.indexOf(node);
+      // V2.4.7: a store-driven re-render inside the long-press window (e.g. the debounced
+      // alarm sync that follows an add/complete) replaces the card nodes; re-bind to the
+      // fresh node carrying the same data-id instead of silently dropping the drag.
+      if (index < 0 && node.getAttribute && node.getAttribute('data-id')) {
+        var sel = ':scope > ' + selector + '[data-id="' + node.getAttribute('data-id') + '"]';
+        for (var zj = 0; zj < list.length; zj++) {
+          var alt = list[zj].listEl.querySelector(sel);
+          if (alt) {
+            node = alt;
+            hostZone = list[zj];
+            nodes = childrenOf(hostZone.listEl, hostZone.itemSelector);
+            index = nodes.indexOf(node);
+            break;
+          }
+        }
+      }
       if (index < 0) return false;
 
       var rect = node.getBoundingClientRect();

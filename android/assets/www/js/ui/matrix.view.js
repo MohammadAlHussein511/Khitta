@@ -30,15 +30,25 @@
   }
 
   /**
-   * The occurrence a matrix row represents: the task's first OPEN (not completed)
-   * occurrence — a missed one first, otherwise the next upcoming instance.
-   * Fully completed / closed tasks return null and are filtered out of this ACTIVE
-   * view (they stay in the database and remain reviewable in the week's completed
-   * section and in past days).
+   * V2.4.7 — THE MATRIX IS A STRICT "CURRENT DAY" BOARD (product decision).
+   *
+   * The row a matrix card represents is the task's open occurrence bound to the
+   * CURRENT calendar day — nothing else:
+   *   • completing it removes the row until the day of the next occurrence arrives
+   *     (no more "غدا 10:00" ghost row right after ticking);
+   *   • a daily habit reappears at 00:00 of each new day;
+   *   • a weekly task appears only on its weekday, at 00:00 of that day — not a week
+   *     ahead;
+   *   • a one-off appears only on its due day;
+   *   • missed occurrences of past days stay in history (read-only past days in the
+   *     week view + the overdue badge), never crowding today's board.
+   * Earlier versions showed "first open occurrence in a ±window", which surfaced
+   * tomorrow's / next week's instance the moment today's was completed — exactly the
+   * behaviour the product owner rejected.
    */
   function currentOccurrence(task, now) {
     if (!task || !task.dueAt) return null;
-    var open = M.openOccurrences(task, now - 60 * D.DAY, now + 400 * D.DAY, 1);
+    var open = M.openOccurrences(task, D.startOfDay(now), D.endOfDay(now), 50);
     return open.length ? open[0] : null;
   }
 

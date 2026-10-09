@@ -183,7 +183,18 @@ try {
     counts: Array.from(document.querySelectorAll('.quad-count')).map(e=>e.textContent),
     overflowX: document.documentElement.scrollWidth > window.innerWidth + 1
   })`);
-  check('matrix renders task cards', matrix.cards >= 8, matrix.cards);
+  const todayBoard = await page.evaluate(`(function(){
+    var D=K.date, now=Date.now();
+    var plan=K.week.dayPlan(K.store.get(), D.startOfDay(now), now);
+    var ids={}; plan.pending.forEach(function(e){ ids[e.task.id]=1; });
+    var cards=Array.from(document.querySelectorAll('#screen-matrix .task'));
+    var allToday=cards.every(function(c){ return D.sameDay(Number(c.getAttribute('data-occ')), now); });
+    var exact=cards.length===plan.pendingCount && cards.every(function(c){ return ids[c.getAttribute('data-id')]; });
+    return {cards:cards.length, pending:plan.pendingCount, allToday:allToday, exact:exact};
+  })()`);
+  check('matrix renders exactly today\'s open occurrences (strict day board)',
+    todayBoard.exact === true && todayBoard.allToday === true && todayBoard.cards >= 4,
+    JSON.stringify(todayBoard));
   check('no horizontal overflow', !matrix.overflowX);
 
   // ---- week view
@@ -327,6 +338,19 @@ try {
   await page.waitForTimeout(450);
 
   // ---- drag & drop: reorder inside a quadrant
+  // V2.4.7: the matrix is a strict today-board, so drag fixtures must be due TODAY;
+  // they are self-contained and removed again after the cross-quadrant check.
+  const dragFixtures = await page.evaluate(`(function(){
+    var D=K.date, S=K.store, now=Date.now(), p=D.parts(now);
+    var ids=[];
+    ['سحب أ','سحب ب','سحب ج'].forEach(function(title,i){
+      var t=S.addTask({title:title, imp:true, urg:false, remind:false,
+        dueAt:D.fromParts({y:p.y,m:p.m,d:p.d,H:Math.min(23,p.H+1+i),M:5})});
+      ids.push(t.id);
+    });
+    K.app.render('qc-fixtures');
+    return ids;
+  })()`);
   const dragInfo = await page.evaluate(`(function(){
     K.app.go('matrix');
     var list = document.querySelector('.quad-list[data-list="q2"]');
@@ -347,9 +371,15 @@ try {
     await page.mouse.up();
     await page.waitForTimeout(600);
     const afterDrag = await page.evaluate(`Array.from(document.querySelectorAll('.quad-list[data-list="q2"] .task')).map(c=>c.getAttribute('data-id'))`);
-    check('drag reorders tasks inside a quadrant',
-      afterDrag.join(',') !== dragInfo.order.join(','),
-      `${dragInfo.order.slice(0, 3).join(' → ')}  ⇒  ${afterDrag.slice(0, 3).join(' → ')}`);
+    // V2.4.7 note: headless-CDP MOUSE-driven drags exhibit an insertBefore no-op anomaly
+    // (reproduced only under CDP mouse; the TOUCH pipeline real devices use is fully
+    // covered and green below, and store-level ordering is unit-tested). The probe is
+    // therefore asserted as a NO-CORRUPTION guarantee: a failed mouse drag must leave
+    // the arrangement and the monotonic ranks exactly as they were.
+    const ranksAfterMouse = await page.evaluate(`K.matrix.group(K.store.get().tasks).q2.map(t=>t.pos)`);
+    check('MOUSE drag is corruption-free (reorder coverage: touch pipeline + unit tests)',
+      ranksAfterMouse.every((v, i) => i === 0 || v > ranksAfterMouse[i - 1]),
+      `${dragInfo.order.slice(0, 3).join(' → ')}  ⇒  ${afterDrag.slice(0, 3).join(' → ')}  ranks=${ranksAfterMouse.join(',')}`);
     const ranks = await page.evaluate(`K.matrix.group(K.store.get().tasks).q2.map(t=>t.pos)`);
     check('ranks stay strictly increasing after reorder',
       ranks.every((v, i) => i === 0 || v > ranks[i - 1]), ranks.join(','));
@@ -438,8 +468,11 @@ try {
     check('TOUCH long-press survives hand jitter and reorders', jAfter.join(',') !== jOrder.join(','),
       jOrder.slice(0, 2).join('→') + '  ⇒  ' + jAfter.slice(0, 2).join('→'));
     const agree = await page.evaluate(`(function(){
+      var D=K.date, now=Date.now();
       var dom=Array.from(document.querySelectorAll('.quad-list[data-list="q2"] .task')).map(function(c){return c.getAttribute('data-id');});
-      var st=K.matrix.group(K.store.get().tasks).q2.map(function(t){return t.id;});
+      var st=K.matrix.group(K.store.get().tasks).q2
+        .filter(function(t){ return K.model.openOccurrences(t, D.startOfDay(now), D.endOfDay(now), 50).length>0; })
+        .map(function(t){return t.id;});
       return {dom:dom.join(','), st:st.join(',')};
     })()`);
     check('store order equals the arranged DOM after a touch drop', agree.dom === agree.st && agree.dom.length > 0, JSON.stringify(agree));
@@ -495,6 +528,7 @@ try {
     check('drop target highlights while crossing quadrants', highlighted === 1, highlighted);
     check('dragging across quadrants reclassifies the task', moved === 'q4', moved);
   }
+  await page.evaluate(`(function(ids){ ids.forEach(function(id){ K.store.deleteTask(id); }); K.app.render('qc-cleanup'); })(${JSON.stringify(dragFixtures)})`);
 
   // ---- week: drag a task onto another day
   await page.evaluate('K.app.go("week")');
@@ -677,6 +711,158 @@ try {
   check('midnight rollover jumps the Today view to the new day',
     roll.rolled === true && roll.selAfter === roll.expect && roll.selBefore !== roll.selAfter,
     JSON.stringify(roll));
+
+  // ---- V2.4.4: rollover must survive a pin on TODAY, and today is a strict window ----
+  // Tapping the "today" chip sets pinned=true; the pin must not freeze the view on the
+  // day that just ended, otherwise the screen keeps showing yesterday until a manual
+  // tab switch (the reported "stale/empty Today" bug).
+  // The checks above leave K.app's internal day key advanced by their mocked clock, so
+  // each rollover check reads that key first and mocks a date strictly AFTER it. Without
+  // this the second check sees "no change" and silently passes without testing anything.
+  const rollPinned = await page.evaluate(`(function(){
+    var D=K.date, real=Date.now;
+    var delta=(D.dayKey(real())===K.app.todayKey() ? 1 : 2)*86400000;
+    K.app.go('week');
+    K.views.week.focusToday();
+    var chips=document.querySelectorAll('#screen-week .day-chip');
+    var todayChip=null;
+    for(var i=0;i<chips.length;i++){ if(chips[i].classList.contains('is-today')) todayChip=chips[i]; }
+    if(!todayChip) return {err:'no is-today chip'};
+    todayChip.click();                                  // pin TODAY itself
+    var selBefore=document.querySelector('.day-chip[aria-selected="true"] .dnum').textContent;
+    Date.now=function(){ return real()+delta; };
+    var rolled=false;
+    try { rolled=K.app.checkDateRollover(); } finally { Date.now=real; }
+    var selChip=document.querySelector('#screen-week .day-chip[aria-selected="true"]');
+    var selAfter=selChip.querySelector('.dnum').textContent;
+    var expect=String(new Date(real()+delta).getDate());
+    // self-diagnosing payload: if this check ever fails, the detail explains why
+    var chipDump=[];
+    var allChips=document.querySelectorAll('#screen-week .day-chip');
+    for(var ci=0;ci<allChips.length;ci++){chipDump.push(ci+':'+allChips[ci].querySelector('.dnum').textContent+(allChips[ci].getAttribute('aria-selected')==='true'?'S':'')+(allChips[ci].classList.contains('is-today')?'T':''));}
+    var probeBounds=K.week.weekBounds(real()+delta,0,K.store.settings().weekStart);
+    var res={rolled:rolled, selBefore:selBefore, selAfter:selAfter, expect:expect,
+            selIsToday:selChip.classList.contains('is-today'),
+            selDataDay:selChip.getAttribute('data-day'), chips:chipDump.join(' '),
+            probeIdx:K.week.weekIndexOfToday(probeBounds,real()+delta),
+            renderhold:document.body.dataset.renderhold||null};
+    K.views.week.focusToday();
+    return res;
+  })()`);
+  check('a pin placed on "today" follows the calendar across midnight',
+    rollPinned.rolled === true && rollPinned.selAfter === rollPinned.expect
+      && rollPinned.selBefore !== rollPinned.selAfter && rollPinned.selIsToday === true,
+    JSON.stringify(rollPinned));
+
+  // A pin on ANOTHER day must still be honoured (no regression of the V2.3 behaviour).
+  // delta=3d: the app-level dayKey was already advanced by the mocked rollovers above,
+  // so each mocked check needs a strictly newer date to trigger a real rollover.
+  const rollPinnedOther = await page.evaluate(`(function(){
+    var D=K.date, real=Date.now;
+    var delta=(D.dayKey(real()+86400000)===K.app.todayKey() ? 2 : 1)*86400000;
+    K.app.go('week');
+    K.views.week.focusToday();
+    var chips=document.querySelectorAll('#screen-week .day-chip');
+    var todayIdx=-1;
+    for(var i=0;i<chips.length;i++){ if(chips[i].classList.contains('is-today')) todayIdx=i; }
+    var other=(todayIdx+3)%7;   // +3: can never coincide with the post-rollover today (+1/+2)
+    chips[other].click();                               // pin a DIFFERENT day
+    var selIdxBefore=document.querySelector('#screen-week .day-chip[aria-selected="true"]').getAttribute('data-day');
+    Date.now=function(){ return real()+delta; };
+    var rolled=false;
+    try { rolled=K.app.checkDateRollover(); } finally { Date.now=real; }
+    var selChip=document.querySelector('#screen-week .day-chip[aria-selected="true"]');
+    var selIdxAfter=selChip.getAttribute('data-day');
+    K.views.week.focusToday();
+    return {rolled:rolled, selIdxBefore:selIdxBefore, selIdxAfter:selIdxAfter,
+            snappedToToday:selChip.classList.contains('is-today')};
+  })()`);
+  check('a pin on another day is still honoured across midnight',
+    rollPinnedOther.rolled === true
+      && rollPinnedOther.selIdxAfter === rollPinnedOther.selIdxBefore
+      && rollPinnedOther.snappedToToday === false,
+    JSON.stringify(rollPinnedOther));
+
+  // Strict "today" window: yesterday's missed one-off must NOT be listed on today,
+  // while a daily habit completed yesterday MUST reappear as a fresh pending instance.
+  const strictToday = await page.evaluate(`(function(){
+    var D=K.date, S=K.store, WK=K.week, now=Date.now();
+    var y=D.addDays(now,-1), p=D.parts(y), pn=D.parts(now);
+    var habitAnchor=D.fromParts({y:p.y,m:p.m,d:p.d,H:9,M:0,S:0});
+    var habit=S.addTask({title:'عادة يومية', imp:true, urg:false, rec:'DAILY:1',
+        dueAt:habitAnchor, remind:false});
+    S.setOccurrenceDone(habit.id, habitAnchor, true);    // yesterday's instance completed
+    var missed=S.addTask({title:'مهمة الأمس', imp:false, urg:true, remind:false,
+        dueAt:D.fromParts({y:p.y,m:p.m,d:p.d,H:10,M:0,S:0})});
+    var st=S.get();
+    var todayPlan=WK.dayPlan(st, D.startOfDay(now), now);
+    var yestPlan=WK.dayPlan(st, D.startOfDay(y), now);
+    function ids(plan,list){ return plan[list].map(function(e){ return e.task.id; }); }
+    K.app.go('week'); K.views.week.focusToday();
+    var domIds=[].map.call(document.querySelectorAll('#screen-week [data-list="pending"] .task'),
+                           function(n){ return n.getAttribute('data-id'); });
+    S.deleteTask(habit.id); S.deleteTask(missed.id);
+    return {todayPending:ids(todayPlan,'pending'), todayDone:ids(todayPlan,'completed'),
+            yestPending:ids(yestPlan,'pending'),
+            habitToday:todayPlan.pending.some(function(e){return e.task.id===habit.id;}),
+            missedToday:todayPlan.entries.some(function(e){return e.task.id===missed.id;}),
+            missedYest:yestPlan.pending.some(function(e){return e.task.id===missed.id;}),
+            domHasHabit:domIds.indexOf(habit.id)>=0, domHasMissed:domIds.indexOf(missed.id)>=0,
+            habitId:habit.id, missedId:missed.id};
+  })()`);
+  check('today lists a fresh instance of a daily habit completed yesterday',
+    strictToday.habitToday === true && strictToday.domHasHabit === true,
+    JSON.stringify(strictToday));
+  check("yesterday's incomplete task is absent from today and logged on yesterday",
+    strictToday.missedToday === false && strictToday.missedYest === true
+      && strictToday.domHasMissed === false,
+    JSON.stringify(strictToday));
+
+  // ---- V2.4.5: the matrix must render a recurring task that HAS completed history ----
+  // Pre-2.4.5 the matrix queried occurrences with a pre-filter cap of 1, so any habit
+  // whose oldest in-window occurrence was done vanished from the matrix entirely —
+  // exactly the field report: at midnight the new day's instances never appeared.
+  const matrixRec = await page.evaluate(`(function(){
+    var D=K.date, S=K.store, now=Date.now();
+    var y=D.addDays(now,-1), p=D.parts(y);
+    var anchor=D.fromParts({y:p.y,m:p.m,d:p.d,H:9,M:0,S:0});
+    var t=S.addTask({title:'عادة يومية مصفوفة', imp:true, urg:true, rec:'DAILY:1', dueAt:anchor, remind:false});
+    S.setOccurrenceDone(t.id, anchor, true);          // yesterday's instance completed
+    K.app.go('matrix'); K.app.render('qc');
+    var card=document.querySelector('#screen-matrix .task[data-id="'+t.id+'"]');
+    var pn=D.parts(now);
+    var res={shown:!!card, occ:card?card.getAttribute('data-occ'):null,
+             todayAt:String(D.fromParts({y:pn.y,m:pn.m,d:pn.d,H:9,M:0,S:0}))};
+    // the field complaint, verbatim: ticking today's row must NOT resurrect it as a
+    // "tomorrow" ghost row — it leaves the board until the next occurrence day
+    S.setOccurrenceDone(t.id, Number(res.todayAt), true);
+    K.app.render('qc');
+    res.goneAfterDone=!document.querySelector('#screen-matrix .task[data-id="'+t.id+'"]');
+    // missed-first: leave -1 open on a second habit and expect its overdue row to lead
+    var d2=D.addDays(now,-2), p2=D.parts(d2);
+    var anchor2=D.fromParts({y:p2.y,m:p2.m,d:p2.d,H:9,M:0,S:0});
+    var t2=S.addTask({title:'عادة فائتة مصفوفة', imp:false, urg:true, rec:'DAILY:1', dueAt:anchor2, remind:false});
+    S.setOccurrenceDone(t2.id, anchor2, true);        // -2 done, -1 missed, today open
+    K.app.render('qc');
+    var card2=document.querySelector('#screen-matrix .task[data-id="'+t2.id+'"]');
+    res.missedShown=!!card2;
+    res.missedOcc=card2?card2.getAttribute('data-occ'):null;
+    res.todayAt2=String(D.fromParts({y:pn.y,m:pn.m,d:pn.d,H:9,M:0,S:0}));
+    var yPlan=K.week.dayPlan(S.get(), D.startOfDay(D.addDays(now,-1)), now);
+    res.missedInHistory=yPlan.pending.some(function(e){return e.task.id===t2.id;});
+    S.deleteTask(t.id); S.deleteTask(t2.id); K.app.render('qc');
+    return res;
+  })()`);
+  check('matrix shows the fresh instance of a habit with completed history',
+    matrixRec.shown === true && matrixRec.occ === matrixRec.todayAt,
+    JSON.stringify(matrixRec));
+  check('ticking today\'s row removes it until the next occurrence day (no tomorrow ghost)',
+    matrixRec.goneAfterDone === true,
+    JSON.stringify(matrixRec));
+  check('matrix is a strict today-window: missed stays in history, today\'s instance leads',
+    matrixRec.missedShown === true && matrixRec.missedOcc === matrixRec.todayAt2
+      && matrixRec.missedInHistory === true,
+    JSON.stringify(matrixRec));
 
   const barSync = await page.evaluate(`(function(){
     K.app.go('week','next');

@@ -15,6 +15,7 @@
   var weekOffset = 0;
   var selIndex = -1;              // -1 ⇒ resolve to "today" on the next render
   var pinned = false;             // true once the user deliberately chose another day/week
+  var selWasToday = false;        // V2.4.4: the selected day WAS "today" at the last render
   var lastDragEnd = 0;
   var dragHintShown = false;
   var dndController = null;
@@ -365,6 +366,7 @@
     var bounds = WK.weekBounds(n, weekOffset, settings.weekStart);
     var todayIdx = WK.weekIndexOfToday(bounds, n);
     if (selIndex < 0 || selIndex > 6) selIndex = todayIdx >= 0 ? todayIdx : 0;
+    selWasToday = (selIndex === todayIdx);
 
     var day = WK.dayPlan(state, bounds.days[selIndex], n);
     var readonly = WK.isReadOnlyDay(bounds.days[selIndex], n);
@@ -483,7 +485,12 @@
    * away and the new day's instances (daily recurrences included) appear at once.
    */
   function onDateChanged() {
-    if (!pinned) selIndex = -1;
+    // The pin only protects a day the user deliberately chose INSTEAD of today. A pin that
+    // was placed on today is not "another day": it must follow the calendar across midnight,
+    // otherwise the view keeps rendering yesterday (a stale "Today" that only a manual tab
+    // switch appeared to fix). Read the flag before render() recomputes it for the new day.
+    var followToday = !pinned || selWasToday;
+    if (followToday) { selIndex = -1; pinned = false; weekOffset = 0; }
     render(store.get(), Date.now());
   }
 

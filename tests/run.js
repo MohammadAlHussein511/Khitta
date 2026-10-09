@@ -577,6 +577,23 @@ test('reorder and moveToQuadrant go through the store', () => {
   eq(store.quadrantList('q3').length, 1);
 });
 
+test('syncOrderFromDom parks hidden quadrant members behind the committed order', () => {
+  // V2.4.7: the matrix snapshot only contains tasks with an occurrence today;
+  // hidden members must not interleave stale ranks with the committed arrangement.
+  freshStore();
+  const a = store.addTask({ title: 'a', imp: true, urg: false, dueAt: at(2026, 9, 10, 9) });
+  const b = store.addTask({ title: 'b', imp: true, urg: false, dueAt: at(2026, 9, 10, 10) });
+  const hidden = store.addTask({ title: 'h', imp: true, urg: false, dueAt: at(2026, 9, 13, 9) });
+  eq(store.quadrantList('q2').map(t => t.id), [a.id, b.id, hidden.id]);
+  store.syncOrderFromDom({ q1: [], q2: [b.id, a.id], q3: [], q4: [] });   // DOM shows only a,b
+  eq(store.quadrantList('q2').map(t => t.id), [b.id, a.id, hidden.id], 'hidden task parked last');
+  const ranks = store.quadrantList('q2').map(t => t.pos);
+  ok(ranks.every((v, i) => i === 0 || v > ranks[i - 1]), 'ranks strictly monotonic: ' + ranks);
+  eq(store.taskById(b.id).pos, MX.STEP);
+  eq(store.taskById(a.id).pos, 2 * MX.STEP);
+  eq(store.taskById(hidden.id).pos, 3 * MX.STEP);
+});
+
 test('syncOrderFromDom rewrites order_index + quadrant flags and persists', () => {
   freshStore();
   const due = at(2026, 9, 10, 9);
@@ -881,6 +898,165 @@ test('export/import are gone from the V2 codebase', () => {
   eq(typeof K.bridge.exportBackup, 'undefined');
   eq(typeof K.bridge.startImport, 'undefined');
   ok(typeof store.stateJsonLength === 'function');
+});
+
+// ================================================================== V2.4.4 midnight window
+section('V2.4.4 — strict "today" window + per-day recurrence instances');
+
+test('daily habit completed yesterday spawns a fresh PENDING instance today', () => {
+  const st = M.normalizeState({ tasks: [] });
+  st.tasks.push(M.normalizeTask({ id: 'read', title: 'قراءة يومية', dueAt: at(2026, 9, 9, 9), rec: 'DAILY:1' }));
+  st.tasks[0].done[String(at(2026, 9, 9, 9))] = at(2026, 9, 9, 20);       // yesterday COMPLETED
+  const now = at(2026, 9, 10, 0, 30);                                      // just after midnight
+  const today = WK.dayPlan(st, at(2026, 9, 10), now);
+  eq(today.pendingCount, 1, 'today gets its own instance');
+  eq(today.pending[0].task.id, 'read');
+  eq(today.pending[0].at, at(2026, 9, 10, 9), 'bound to TODAY at the anchor wall time');
+  eq(today.pending[0].done, false, "yesterday's completion does not leak into today");
+  const yest = WK.dayPlan(st, at(2026, 9, 9), now);
+  eq(yest.doneCount, 1, "yesterday's instance stays logged as completed on yesterday");
+});
+
+test("daily habit MISSED yesterday still spawns today's instance", () => {
+  const st = M.normalizeState({ tasks: [] });
+  st.tasks.push(M.normalizeTask({ id: 'read', title: 'قراءة يومية', dueAt: at(2026, 9, 9, 9), rec: 'DAILY:1' }));
+  const now = at(2026, 9, 10, 0, 30);
+  const today = WK.dayPlan(st, at(2026, 9, 10), now);
+  eq(today.pendingCount, 1, 'a brand-new uncompleted instance regardless of the miss');
+  eq(today.pending[0].at, at(2026, 9, 10, 9));
+  eq(today.overdueCount, 0, "today's 09:00 instance is not overdue at 00:30");
+  const yest = WK.dayPlan(st, at(2026, 9, 9), now);
+  eq(yest.pendingCount, 1);
+  eq(yest.overdueCount, 1, 'the miss is logged on yesterday, not carried into today');
+});
+
+test('incomplete one-off DISAPPEARS from today at midnight, logged on its own day', () => {
+  const st = M.normalizeState({ tasks: [] });
+  st.tasks.push(M.normalizeTask({ id: 'once', title: 'مهمة الأمس', dueAt: at(2026, 9, 9, 18) }));
+  const now = at(2026, 9, 10, 0, 30);
+  const today = WK.dayPlan(st, at(2026, 9, 10), now);
+  eq(today.total, 0, 'today is a strict window over the CURRENT calendar day only');
+  const yest = WK.dayPlan(st, at(2026, 9, 9), now);
+  eq(yest.pendingCount, 1);
+  eq(yest.overdueCount, 1, 'logged as missed/incomplete for yesterday');
+  ok(WK.isReadOnlyDay(at(2026, 9, 9), now), 'yesterday is read-only history');
+});
+
+test("today's completion leaves the pending window immediately (per-occurrence)", () => {
+  const st = M.normalizeState({ tasks: [] });
+  st.tasks.push(M.normalizeTask({ id: 'a', title: 'مهمة', dueAt: at(2026, 9, 10, 8) }));
+  st.tasks.push(M.normalizeTask({ id: 'b', title: 'أخرى', dueAt: at(2026, 9, 10, 10) }));
+  st.tasks[0].done[String(at(2026, 9, 10, 8))] = at(2026, 9, 10, 8, 5);
+  const now = at(2026, 9, 10, 12);
+  const today = WK.dayPlan(st, at(2026, 9, 10), now);
+  eq(today.pendingCount, 1);
+  eq(today.pending[0].task.id, 'b', 'the completed task is gone from pending');
+  eq(today.doneCount, 1);
+  eq(today.completed[0].task.id, 'a');
+});
+
+test('weekly recurrence only appears on its masked days across midnight', () => {
+  const st = M.normalizeState({ tasks: [] });
+  // 2026-09-07 is a Monday (ISO 1); mask Mon+Thu = (1<<0)|(1<<3) = 9
+  st.tasks.push(M.normalizeTask({ id: 'gym', title: 'نادي', dueAt: at(2026, 9, 7, 18), rec: 'WEEKLY:1:9' }));
+  eq(WK.dayPlan(st, at(2026, 9, 8), at(2026, 9, 8, 0, 30)).total, 0, 'no instance on Tuesday');
+  const thu = WK.dayPlan(st, at(2026, 9, 10), at(2026, 9, 10, 0, 30));
+  eq(thu.pendingCount, 1, 'fresh instance on Thursday');
+  eq(thu.pending[0].at, at(2026, 9, 10, 18));
+});
+
+// ================================================================== V2.4.5 matrix query
+section('V2.4.5 — matrix occurrence query sees past completed history');
+
+test('matrix query contract: first OPEN occurrence is reachable behind completed history', () => {
+  const st = M.normalizeState({ tasks: [] });
+  st.tasks.push(M.normalizeTask({ id: 'read', title: 'قراءة يومية', dueAt: at(2026, 9, 1, 9), rec: 'DAILY:1' }));
+  const t = st.tasks[0];
+  for (let d = 1; d <= 9; d++) t.done[String(at(2026, 9, d, 9))] = at(2026, 9, d, 21);
+  const now = at(2026, 9, 10, 0, 30);
+  const from = D.addDays(now, -60), to = D.addDays(now, 400);
+  // the trap the matrix fell into before V2.4.5: a pre-filter cap of 1 sees only the
+  // oldest (completed) occurrence and hides the whole series
+  eq(M.openOccurrences(t, from, to, 1).length, 0, 'cap=1 hides a series with done history');
+  const open = M.openOccurrences(t, from, to, 600);
+  eq(open[0], at(2026, 9, 10, 9), 'with a window-wide cap the fresh instance is found');
+});
+
+test('matrix query contract: a missed occurrence sorts before the fresh one', () => {
+  const st = M.normalizeState({ tasks: [] });
+  st.tasks.push(M.normalizeTask({ id: 'read', title: 'قراءة يومية', dueAt: at(2026, 9, 1, 9), rec: 'DAILY:1' }));
+  const t = st.tasks[0];
+  for (let d = 1; d <= 8; d++) t.done[String(at(2026, 9, d, 9))] = at(2026, 9, d, 21);
+  // Sep 9 left MISSED on purpose
+  const now = at(2026, 9, 10, 0, 30);
+  const open = M.openOccurrences(t, D.addDays(now, -60), D.addDays(now, 400), 600);
+  eq(open[0], at(2026, 9, 9, 9), 'missed-first: the overdue instance leads');
+  eq(open[1], at(2026, 9, 10, 9), 'then the fresh instance of the new day');
+});
+
+test('sweep-completing every visible matrix row still leaves fresh rows after midnight', () => {
+  // the exact field flow: at 23:50 the user ticks every row the matrix shows, then
+  // midnight passes — the new day must still surface its instances (V2.4.5 query).
+  const st = M.normalizeState({ tasks: [] });
+  [9, 12, 20].forEach((h, i) => {
+    const t = M.normalizeTask({ id: 'h' + i, title: 'h' + i, dueAt: at(2026, 10, 2, h), rec: 'DAILY:1' });
+    for (let d = 2; d <= 8; d++) t.done[String(at(2026, 10, d, h))] = at(2026, 10, d, h + 1);
+    st.tasks.push(t);
+  });
+  st.tasks.push(M.normalizeTask({ id: 'o1', title: 'once', dueAt: at(2026, 10, 9, 18) }));
+  const cur = (t, n) => { const o = M.openOccurrences(t, n - 60 * D.DAY, n + 400 * D.DAY, 600); return o.length ? o[0] : null; };
+  const now2350 = at(2026, 10, 9, 23, 50), mid = at(2026, 10, 10, 0, 5);
+  eq(st.tasks.filter(t => cur(t, now2350) != null).length, 4, 'four rows visible before the sweep');
+  st.tasks.forEach(t => { const o = cur(t, now2350); if (o != null) t.done[String(o)] = now2350; });
+  const afterMid = st.tasks.filter(t => cur(t, mid) != null);
+  eq(afterMid.length, 3, 'the three habits surface their new-day instances');
+  const plan = WK.dayPlan(st, at(2026, 10, 10), mid);
+  eq(plan.pendingCount, 3);
+  eq(WK.dayPlan(st, at(2026, 10, 9), mid).doneCount, 4, 'yesterday keeps the four completions');
+});
+
+// ================================================================== V2.4.7 today-board
+section('V2.4.7 — matrix is a strict current-day board');
+
+const todayOcc = (t, n) => {                       // mirror of matrix.view currentOccurrence
+  const o = M.openOccurrences(t, D.startOfDay(n), D.endOfDay(n), 50);
+  return o.length ? o[0] : null;
+};
+
+test('completing today\'s instance hides the task until its next occurrence day', () => {
+  const st = M.normalizeState({ tasks: [] });
+  st.tasks.push(M.normalizeTask({ id: 'd', title: 'يومية', dueAt: at(2026, 10, 1, 9), rec: 'DAILY:1' }));
+  const t = st.tasks[0];
+  const now = at(2026, 10, 9, 16, 30);
+  eq(todayOcc(t, now), at(2026, 10, 9, 9), 'today\'s instance is on the board');
+  t.done[String(at(2026, 10, 9, 9))] = now;
+  eq(todayOcc(t, now), null, 'ticked ⇒ gone, no tomorrow ghost row');
+  eq(todayOcc(t, at(2026, 10, 10, 0, 5)), at(2026, 10, 10, 9), 'back at 00:00 of the new day');
+});
+
+test('weekly tasks appear only on their weekday, at 00:00 of that day', () => {
+  const st = M.normalizeState({ tasks: [] });
+  // 2026-10-09 is a Friday (iso 5); mask Fri = 1<<4 = 16
+  st.tasks.push(M.normalizeTask({ id: 'w', title: 'جمعة', dueAt: at(2026, 10, 9, 17), rec: 'WEEKLY:1:16' }));
+  const t = st.tasks[0];
+  eq(todayOcc(t, at(2026, 10, 8, 23, 55)), null, 'Thursday night: nothing on the board');
+  eq(todayOcc(t, at(2026, 10, 9, 0, 5)), at(2026, 10, 9, 17), 'Friday 00:05: the instance appears');
+  t.done[String(at(2026, 10, 9, 17))] = at(2026, 10, 9, 17, 30);
+  eq(todayOcc(t, at(2026, 10, 9, 18)), null, 'done ⇒ gone the same day');
+  eq(todayOcc(t, at(2026, 10, 10, 12)), null, 'Saturday: still gone');
+  eq(todayOcc(t, at(2026, 10, 16, 0, 5)), at(2026, 10, 16, 17), 'next Friday 00:05: back');
+});
+
+test('one-off tasks appear only on their due day; missed ones stay in history', () => {
+  const st = M.normalizeState({ tasks: [] });
+  st.tasks.push(M.normalizeTask({ id: 'o', title: 'مرة واحدة', dueAt: at(2026, 10, 9, 18) }));
+  const t = st.tasks[0];
+  eq(todayOcc(t, at(2026, 10, 8, 12)), null, 'not on the board before its day');
+  ok(todayOcc(t, at(2026, 10, 9, 0, 5)) != null, 'on the board from 00:00 of its day');
+  eq(todayOcc(t, at(2026, 10, 10, 0, 5)), null, 'missed ⇒ leaves the board at midnight');
+  const yest = WK.dayPlan(st, at(2026, 10, 9), at(2026, 10, 10, 0, 5));
+  eq(yest.pendingCount, 1, 'still logged as missed on its own day');
+  eq(yest.overdueCount, 1);
 });
 
 // ================================================================== summary

@@ -343,6 +343,9 @@
     render('dayroll');
     if (mountedViews.stats) mountedViews.stats.render(store.get(), Date.now());
     if (mountedViews.settings) mountedViews.settings.render(store.get(), Date.now());
+    // V2.4.6: visible confirmation that the new day was loaded — at midnight in the
+    // foreground, or the moment the app resumes after a night in the background.
+    W.toast(I.t('toast.newDay'), { icon: 'calendar', duration: 3000 });
     return true;
   }
 
@@ -555,6 +558,14 @@
     });
     window.addEventListener('pagehide', function () { store.flush(); });
 
+    // V2.4.4 (Bug 1): additional resume signals. Not every WebView fires visibilitychange
+    // when the activity resumes, and a bfcache restore skips it entirely — the date
+    // watchdog must not depend on a single event. Both listeners run the SAME idempotent
+    // check (current date vs last rendered date); within one day they cost one string
+    // comparison and return.
+    window.addEventListener('pageshow', function () { checkDateRollover(); });
+    window.addEventListener('focus', function () { checkDateRollover(); });
+
     try {
       window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () {
         if (store.settings().theme === 'system') applyTheme();
@@ -602,6 +613,13 @@
     var ok = store.reloadFromDisk();
     if (!ok) return;
     if (store.settings().lang !== langBefore) applyLang();
+    // V2.4.4 (Bug 1): this is the native onResume path — the ONLY lifecycle signal that
+    // is guaranteed on Android (JS timers are frozen while web.onPause() is in effect and
+    // visibilitychange is unreliable across WebViews). Compare the current system date
+    // with the last rendered date here too, so resuming after midnight rebuilds the new
+    // day's screen (fresh recurrence instances included) instead of waiting for a
+    // manual tab switch. checkDateRollover is idempotent — a no-op within the same day.
+    checkDateRollover();
     applyTheme();
     render('sync');
     if (mountedViews.settings) mountedViews.settings.render(store.get(), Date.now());

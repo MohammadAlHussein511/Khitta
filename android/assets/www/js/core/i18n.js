@@ -258,7 +258,8 @@
     'toast.remindersOff': 'التذكيرات متوقفة',
     'toast.needPermission': 'يلزم إذن الإشعارات أولًا',
     'toast.testSent': 'أُرسل التذكير التجريبي',
-    'toast.langChanged': 'Language switched to English',
+    'toast.langChanged': 'تم التبديل إلى العربية',
+    'toast.newDay': 'بدأ يوم جديد — حُمّلت مهام اليوم تلقائيًا',
 
     'onb.title': 'أهلًا بك في خِطّة',
     'onb.body': 'صنّف مهامك حسب الأهمية والاستعجال، وخطّط أسبوعك من السبت إلى الجمعة، ودع النظام يذكّرك في الموعد حتى لو كان التطبيق مغلقًا.',
@@ -524,7 +525,8 @@
     'toast.remindersOff': 'Reminders are off',
     'toast.needPermission': 'Notification permission is needed first',
     'toast.testSent': 'Test reminder sent',
-    'toast.langChanged': 'تم التبديل إلى العربية',
+    'toast.langChanged': 'Language switched to English',
+    'toast.newDay': 'New day — today’s tasks loaded',
 
     'onb.title': 'Welcome to Khitta',
     'onb.body': 'Sort tasks by importance and urgency, plan a Saturday-to-Friday week, and let the system remind you on time — even when the app is closed.',
